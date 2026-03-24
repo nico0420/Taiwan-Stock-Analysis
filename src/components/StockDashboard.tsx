@@ -54,12 +54,35 @@ const Candlestick = (props: any) => {
 export default function StockDashboard() {
   const [symbol, setSymbol] = useState("2330.TW");
   const [searchInput, setSearchInput] = useState("2330.TW");
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [interval, setInterval] = useState("1d");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   
+  // Fetch suggestions as user types
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (searchInput.trim().length >= 1 && showSuggestions) {
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(searchInput)}`);
+          if (res.ok) {
+            const json = await res.json();
+            setSuggestions(json);
+          }
+        } catch (err) {
+          console.error("Failed to fetch suggestions:", err);
+        }
+      } else {
+        setSuggestions([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchInput, showSuggestions]);
+
   const [activeMAs, setActiveMAs] = useState({
     ma5: true,
     ma10: false,
@@ -108,7 +131,15 @@ export default function StockDashboard() {
         setSearchInput(query);
       }
       setSymbol(query);
+      setShowSuggestions(false);
     }
+  };
+
+  const handleSelectSuggestion = (suggestion: any) => {
+    setSearchInput(suggestion.symbol);
+    setSymbol(suggestion.symbol);
+    setShowSuggestions(false);
+    setSuggestions([]);
   };
 
   const handleMouseMove = (e: any) => {
@@ -209,17 +240,50 @@ export default function StockDashboard() {
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="relative w-full sm:w-64">
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="輸入股票代號 (如: 2330)"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-600"
-            />
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
-            <button type="submit" className="hidden">搜尋</button>
-          </form>
+          <div className="relative w-full sm:w-64">
+            <form onSubmit={handleSearch}>
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder="輸入股票代號 (如: 2330)"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-600"
+              />
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+              <button type="submit" className="hidden">搜尋</button>
+            </form>
+
+            {/* Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-xl">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSelectSuggestion(s)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-0 text-left"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-zinc-100">{s.name}</span>
+                      <span className="text-[10px] text-zinc-500 font-mono">{s.exchange}</span>
+                    </div>
+                    <span className="text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">{s.symbol}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            {/* Click outside to close suggestions */}
+            {showSuggestions && (
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowSuggestions(false)}
+              />
+            )}
+          </div>
         </div>
 
         {loading ? (

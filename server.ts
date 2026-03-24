@@ -171,6 +171,52 @@ async function createApp() {
   
   app.use(express.json());
 
+  app.get("/api/search", async (req, res) => {
+    try {
+      const query = (req.query.q as string || "").trim();
+      if (!query || query.length < 1) return res.json([]);
+
+      // Skip search if it contains Bopomofo (Zhuyin) as Yahoo doesn't support it and it often causes BadRequest
+      if (/[\u3105-\u3129]/.test(query)) {
+        return res.json([]);
+      }
+
+      let searchResult;
+      try {
+        // Try with Taiwan specific parameters first, but simplify the request
+        searchResult = await yahooFinance.search(query, { 
+          lang: 'zh-Hant-TW', 
+          region: 'TW',
+          quotesCount: 10,
+          newsCount: 0 
+        });
+      } catch (e) {
+        try {
+          // If it fails with BadRequest, try a very simple search
+          searchResult = await yahooFinance.search(query, { quotesCount: 10, newsCount: 0 });
+        } catch (e2) {
+          // If both fail, return empty array instead of 500 to keep UI clean
+          return res.json([]);
+        }
+      }
+
+      const suggestions = (searchResult.quotes || [])
+        .filter(q => q.quoteType === 'EQUITY')
+        .map(q => ({
+          symbol: q.symbol,
+          name: (q as any).longname || (q as any).shortname || q.symbol,
+          exchange: q.exchange,
+          type: q.quoteType
+        }))
+        .slice(0, 8);
+
+      res.json(suggestions);
+    } catch (error) {
+      // Catch-all for unexpected errors
+      res.json([]);
+    }
+  });
+
   app.get("/api/stock/:symbol", async (req, res) => {
     try {
       const rawInput = req.params.symbol.trim();
@@ -200,15 +246,30 @@ async function createApp() {
         symbol = commonMappings[rawInput];
       } else if (isChinese || isNumeric || !isStandard) {
         try {
-          // Try standard search
-          let searchResult = await yahooFinance.search(symbol, { lang: 'zh-Hant-TW', region: 'TW' });
+          // Try standard search with Taiwan parameters
+          let searchResult;
+          try {
+            searchResult = await yahooFinance.search(symbol, { 
+              lang: 'zh-Hant-TW', 
+              region: 'TW',
+              quotesCount: 5,
+              newsCount: 0
+            });
+          } catch (e) {
+            // Fallback to simple search if BadRequest occurs
+            searchResult = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
+          }
           
-          if (!searchResult.quotes || searchResult.quotes.length === 0) {
+          if (!searchResult || !searchResult.quotes || searchResult.quotes.length === 0) {
             // If first search yields nothing, try appending " stock"
-            searchResult = await yahooFinance.search(`${symbol} stock`);
+            try {
+              searchResult = await yahooFinance.search(`${symbol} stock`, { quotesCount: 5, newsCount: 0 });
+            } catch (e) {
+              // Ignore search errors in fallback
+            }
           }
 
-          if (searchResult.quotes && searchResult.quotes.length > 0) {
+          if (searchResult && searchResult.quotes && searchResult.quotes.length > 0) {
             const bestMatch = searchResult.quotes.find(q => 
               q.quoteType === 'EQUITY' && ((q as any).symbol?.endsWith('.TW') || (q as any).symbol?.endsWith('.TWO'))
             ) || searchResult.quotes.find(q => q.quoteType === 'EQUITY') || searchResult.quotes[0];
@@ -228,13 +289,12 @@ async function createApp() {
           } else if (isChinese) {
             // For Chinese names, if search fails, try one more time with a simpler search
             try {
-               const fallbackSearch = await yahooFinance.search(encodeURIComponent(symbol));
+               const fallbackSearch = await yahooFinance.search(symbol); // Use raw symbol, not encoded
                if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
                  symbol = (fallbackSearch.quotes[0] as any).symbol;
                }
             } catch (e) {
-               // Final fallback: if "長榮" fails, and it's in our mapping (handled above, but just in case)
-               // or just let it fail gracefully later
+               // Final fallback
             }
           }
         }
