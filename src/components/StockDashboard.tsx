@@ -17,6 +17,29 @@ import {
 import { Search, Loader2, Star, Trash2, PlusCircle, X, Bookmark, Menu } from "lucide-react";
 import { cn } from "../lib/utils";
 
+// Taiwan stock colors: Red for Up, Green for Down (Neon for dark mode)
+const UP_COLOR = "#f87171";
+const DOWN_COLOR = "#4ade80";
+
+const formatNumber = (num: number | null | undefined, decimals = 2) => {
+  if (num == null) return "-";
+  return num.toFixed(decimals);
+};
+
+const getPriceTrend = (val: number | null | undefined, ref: number | null | undefined) => {
+  if (val == null || ref == null) return { icon: "", color: "text-zinc-100" };
+  if (val > ref) return { icon: "▲", color: "text-red-400" };
+  if (val < ref) return { icon: "▼", color: "text-green-400" };
+  return { icon: "", color: "text-zinc-100" };
+};
+
+const getIndicatorTrend = (current: number | null | undefined, prev: number | null | undefined) => {
+  if (current == null || prev == null) return { icon: "", color: "text-zinc-400" };
+  if (current > prev) return { icon: "▲", color: "text-red-400" };
+  if (current < prev) return { icon: "▼", color: "text-green-400" };
+  return { icon: "", color: "text-zinc-400" };
+};
+
 // Custom Candlestick Shape for Recharts
 const Candlestick = (props: any) => {
   const { x, y, width, height, payload } = props;
@@ -27,8 +50,7 @@ const Candlestick = (props: any) => {
   }
 
   const isUp = close > open;
-  // Taiwan stock colors: Red for Up, Green for Down (Neon for dark mode)
-  const color = isUp ? "#f87171" : "#4ade80";
+  const color = isUp ? UP_COLOR : DOWN_COLOR;
 
   if (high === low) {
     return <rect x={x} y={y} width={width} height={1} fill={color} />;
@@ -49,6 +71,52 @@ const Candlestick = (props: any) => {
       <rect x={x} y={bodyTop} width={width} height={bodyHeight} fill={color} stroke={color} fillOpacity={0.8} />
     </g>
   );
+};
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const isUp = data.close > data.open;
+    const color = isUp ? "text-red-400" : "text-green-400";
+    
+    return (
+      <div className="bg-zinc-900/95 border border-zinc-700 p-2 rounded-lg shadow-2xl backdrop-blur-md text-[10px] sm:text-xs min-w-[120px] z-50 pointer-events-none">
+        <div className="text-zinc-400 mb-1 font-mono border-b border-zinc-800 pb-1">{data.date}</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+          <span className="text-zinc-500">開盤</span>
+          <span className="text-zinc-100 font-mono text-right">{formatNumber(data.open)}</span>
+          <span className="text-zinc-500">最高</span>
+          <span className="text-red-400 font-mono text-right">{formatNumber(data.high)}</span>
+          <span className="text-zinc-500">最低</span>
+          <span className="text-green-400 font-mono text-right">{formatNumber(data.low)}</span>
+          <span className="text-zinc-500">收盤</span>
+          <span className={cn("font-mono text-right", color)}>{formatNumber(data.close)}</span>
+          <span className="text-zinc-500 pt-1 border-t border-zinc-800">成交量</span>
+          <span className="text-zinc-100 font-mono text-right pt-1 border-t border-zinc-800">{formatNumber(data.volume / 1000, 0)}張</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const IndicatorTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-zinc-900/95 border border-zinc-700 p-2 rounded-lg shadow-2xl backdrop-blur-md text-[10px] sm:text-xs min-w-[100px] z-50 pointer-events-none">
+        <div className="text-zinc-400 mb-1 font-mono border-b border-zinc-800 pb-1">{label}</div>
+        <div className="space-y-1">
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex justify-between gap-4">
+              <span style={{ color: entry.color }}>{entry.name}</span>
+              <span className="text-zinc-100 font-mono">{formatNumber(entry.value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
 };
 
 export default function StockDashboard() {
@@ -126,9 +194,11 @@ export default function StockDashboard() {
           if (res.ok) {
             const apiSuggestions = await res.json();
             // Combine local matches with API results, removing duplicates
+            // Ensure only Taiwan stocks are included
             const combined = [...localMatches];
             apiSuggestions.forEach((apiS: any) => {
-              if (!combined.some(s => s.symbol === apiS.symbol)) {
+              const isTaiwan = apiS.symbol.endsWith('.TW') || apiS.symbol.endsWith('.TWO');
+              if (isTaiwan && !combined.some(s => s.symbol === apiS.symbol)) {
                 combined.push(apiS);
               }
             });
@@ -222,24 +292,16 @@ export default function StockDashboard() {
   const displayData = data?.historical ? data.historical[displayIndex] : null;
   const prevData = data?.historical && displayIndex > 0 ? data.historical[displayIndex - 1] : null;
 
-  const formatNumber = (num: number | null | undefined, decimals = 2) => {
-    if (num == null) return "-";
-    return num.toFixed(decimals);
-  };
-
-  const getPriceTrend = (val: number | null | undefined, ref: number | null | undefined) => {
-    if (val == null || ref == null) return { icon: "", color: "text-zinc-100" };
-    if (val > ref) return { icon: "▲", color: "text-red-400" };
-    if (val < ref) return { icon: "▼", color: "text-green-400" };
-    return { icon: "", color: "text-zinc-100" };
-  };
-
-  const getIndicatorTrend = (current: number | null | undefined, prev: number | null | undefined) => {
-    if (current == null || prev == null) return { icon: "", color: "text-zinc-400" };
-    if (current > prev) return { icon: "▲", color: "text-red-400" };
-    if (current < prev) return { icon: "▼", color: "text-green-400" };
-    return { icon: "", color: "text-zinc-400" };
-  };
+  // Calculate display values based on hover
+  const isHovering = hoveredIndex !== null;
+  const priceToDisplay = isHovering ? displayData?.close : data?.regularMarketPrice;
+  const changeToDisplay = isHovering 
+    ? (prevData ? displayData?.close - prevData.close : 0) 
+    : data?.regularMarketChange;
+  const percentToDisplay = isHovering 
+    ? (prevData ? ((displayData?.close - prevData.close) / prevData.close * 100) : 0) 
+    : data?.regularMarketChangePercent;
+  const trendColor = getPriceTrend(changeToDisplay, 0).color;
 
   // Get current date formatted
   const today = new Date();
@@ -538,20 +600,20 @@ export default function StockDashboard() {
                   
                   <div className="flex items-end justify-between sm:justify-end gap-6 w-full sm:w-auto">
                     <div className="text-left sm:text-right">
-                      <div className={cn("text-3xl sm:text-4xl font-bold font-mono tracking-tighter", getPriceTrend(data.regularMarketPrice, data.regularMarketPrice - data.regularMarketChange).color)}>
-                        {formatNumber(data.regularMarketPrice)}
+                      <div className={cn("text-3xl sm:text-4xl font-bold font-mono tracking-tighter transition-colors duration-200", trendColor)}>
+                        {formatNumber(priceToDisplay)}
                       </div>
-                      <div className={cn("text-xs sm:text-sm font-medium flex items-center justify-start sm:justify-end gap-1", getPriceTrend(data.regularMarketChange, 0).color)}>
-                        <span>{data.regularMarketChange > 0 ? "+" : ""}{formatNumber(data.regularMarketChange)}</span>
-                        <span>({data.regularMarketChangePercent > 0 ? "+" : ""}{formatNumber(data.regularMarketChangePercent)}%)</span>
+                      <div className={cn("text-xs sm:text-sm font-medium flex items-center justify-start sm:justify-end gap-1 transition-colors duration-200", trendColor)}>
+                        <span>{changeToDisplay > 0 ? "+" : ""}{formatNumber(changeToDisplay)}</span>
+                        <span>({percentToDisplay > 0 ? "+" : ""}{formatNumber(percentToDisplay)}%)</span>
                       </div>
                     </div>
                     <div className="h-10 sm:h-12 w-px bg-zinc-800"></div>
                     <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-[10px] sm:text-xs">
-                      <span className="text-zinc-500">最高</span>
-                      <span className="text-zinc-100 font-mono">{formatNumber(displayData?.high)}</span>
-                      <span className="text-zinc-500">最低</span>
-                      <span className="text-zinc-100 font-mono">{formatNumber(displayData?.low)}</span>
+                      <span className="text-zinc-500">成交量</span>
+                      <span className="text-zinc-100 font-mono">{formatNumber(displayData?.volume / 1000, 0)}張</span>
+                      <span className="text-zinc-500">日期</span>
+                      <span className="text-zinc-100 font-mono">{displayData?.date}</span>
                     </div>
                   </div>
                 </div>
@@ -646,7 +708,7 @@ export default function StockDashboard() {
                           axisLine={{ stroke: '#3f3f46' }}
                         />
                         <Tooltip 
-                          content={() => null}
+                          content={<CustomTooltip />}
                           cursor={{ stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '3 3' }}
                         />
                         
@@ -728,7 +790,7 @@ export default function StockDashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                         <XAxis dataKey="date" hide />
                         <YAxis hide orientation="right" />
-                        <Tooltip content={() => null} cursor={{ fill: '#3f3f46', fillOpacity: 0.3 }} />
+                        <Tooltip content={<IndicatorTooltip />} cursor={{ fill: '#3f3f46', fillOpacity: 0.3 }} />
                         <Bar dataKey="volume" isAnimationActive={false}>
                           {data.historical.map((entry: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.close > entry.open ? "#f87171" : "#4ade80"} fillOpacity={0.6} />
@@ -764,7 +826,7 @@ export default function StockDashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                         <XAxis dataKey="date" hide />
                         <YAxis hide orientation="right" />
-                        <Tooltip content={() => null} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
+                        <Tooltip content={<IndicatorTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                         <Bar dataKey="macdHist" isAnimationActive={false}>
                           {data.historical.map((entry: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.macdHist > 0 ? "#ef4444" : "#22c55e"} />
@@ -808,7 +870,7 @@ export default function StockDashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                         <XAxis dataKey="date" hide />
                         <YAxis domain={[0, 100]} hide orientation="right" />
-                        <Tooltip content={() => null} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
+                        <Tooltip content={<IndicatorTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
                         <Line type="monotone" dataKey="kdjK" stroke="#3b82f6" strokeWidth={1} dot={false} isAnimationActive={false} />
                         <Line type="monotone" dataKey="kdjD" stroke="#a855f7" strokeWidth={1} dot={false} isAnimationActive={false} />
                         <Line type="monotone" dataKey="kdjJ" stroke="#f97316" strokeWidth={1} dot={false} isAnimationActive={false} />

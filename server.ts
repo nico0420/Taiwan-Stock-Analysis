@@ -206,7 +206,10 @@ async function createApp() {
       }
 
       const suggestions = (searchResult.quotes || [])
-        .filter(q => q.quoteType === 'EQUITY')
+        .filter(q => 
+          q.quoteType === 'EQUITY' && 
+          (q.symbol.endsWith('.TW') || q.symbol.endsWith('.TWO'))
+        )
         .map(q => ({
           symbol: q.symbol,
           name: (q as any).longname || (q as any).shortname || q.symbol,
