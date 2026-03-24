@@ -173,9 +173,73 @@ async function createApp() {
 
   app.get("/api/stock/:symbol", async (req, res) => {
     try {
-      const symbol = req.params.symbol.toUpperCase();
+      const rawInput = req.params.symbol.trim();
+      let symbol = rawInput.toUpperCase();
       const interval = (req.query.interval as string) || "1d";
       
+      // 1. Try to resolve the symbol if it's not a standard one (e.g., Chinese name or numeric code)
+      const isChinese = /[\u4e00-\u9fa5]/.test(symbol);
+      const isNumeric = /^\d{4,6}$/.test(symbol);
+      const isStandard = /^[A-Z0-9]+\.[A-Z]+$/.test(symbol);
+
+      // Common Taiwan Stock Mapping for quick resolution and fallback
+      const commonMappings: Record<string, string> = {
+        "台積電": "2330.TW",
+        "鴻海": "2317.TW",
+        "長榮": "2603.TW",
+        "陽明": "2609.TW",
+        "萬海": "2615.TW",
+        "聯發科": "2454.TW",
+        "中鋼": "2002.TW",
+        "台新金": "2887.TW",
+        "國泰金": "2882.TW",
+        "富邦金": "2881.TW",
+      };
+
+      if (commonMappings[rawInput]) {
+        symbol = commonMappings[rawInput];
+      } else if (isChinese || isNumeric || !isStandard) {
+        try {
+          // Try standard search
+          let searchResult = await yahooFinance.search(symbol, { lang: 'zh-Hant-TW', region: 'TW' });
+          
+          if (!searchResult.quotes || searchResult.quotes.length === 0) {
+            // If first search yields nothing, try appending " stock"
+            searchResult = await yahooFinance.search(`${symbol} stock`);
+          }
+
+          if (searchResult.quotes && searchResult.quotes.length > 0) {
+            const bestMatch = searchResult.quotes.find(q => 
+              q.quoteType === 'EQUITY' && ((q as any).symbol?.endsWith('.TW') || (q as any).symbol?.endsWith('.TWO'))
+            ) || searchResult.quotes.find(q => q.quoteType === 'EQUITY') || searchResult.quotes[0];
+            
+            if ((bestMatch as any).symbol) {
+              symbol = (bestMatch as any).symbol;
+            }
+          } else if (isNumeric && !symbol.includes('.')) {
+            symbol = `${symbol}.TW`;
+          }
+        } catch (searchError) {
+          console.warn(`Search failed for "${symbol}", attempting fallback:`, searchError);
+          
+          // If it's a numeric code, we can safely assume it's a Taiwan stock
+          if (isNumeric && !symbol.includes('.')) {
+            symbol = `${symbol}.TW`;
+          } else if (isChinese) {
+            // For Chinese names, if search fails, try one more time with a simpler search
+            try {
+               const fallbackSearch = await yahooFinance.search(encodeURIComponent(symbol));
+               if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
+                 symbol = (fallbackSearch.quotes[0] as any).symbol;
+               }
+            } catch (e) {
+               // Final fallback: if "長榮" fails, and it's in our mapping (handled above, but just in case)
+               // or just let it fail gracefully later
+            }
+          }
+        }
+      }
+
       const validIntervals = ["60m", "1d", "1wk", "1mo"];
       const queryInterval = validIntervals.includes(interval) ? interval as any : "1d";
       
@@ -193,13 +257,31 @@ async function createApp() {
       period2.setDate(period2.getDate() + 1);
       
       const queryOptions = { period1, period2, interval: queryInterval };
-      const chartResult = await yahooFinance.chart(symbol, queryOptions);
+      
+      // Fetch chart data
+      let chartResult;
+      try {
+        chartResult = await yahooFinance.chart(symbol, queryOptions);
+      } catch (chartError: any) {
+        // If chart fails, try one last fallback for numeric symbols
+        if (isNumeric && !symbol.includes('.TW') && !symbol.includes('.TWO')) {
+          try {
+            symbol = `${rawInput.toUpperCase()}.TW`;
+            chartResult = await yahooFinance.chart(symbol, queryOptions);
+          } catch (e) {
+            throw chartError;
+          }
+        } else {
+          throw chartError;
+        }
+      }
+
       const result = chartResult.quotes.filter(
         (q: any) => q.close != null && q.open != null && q.high != null && q.low != null
       );
       
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: "No data found for symbol" });
+        return res.status(404).json({ error: `No data found for symbol: ${symbol}. It might be delisted or the symbol is incorrect.` });
       }
 
       const enrichedData = calculateIndicators(result, queryInterval, chartResult.meta.exchangeTimezoneName);
