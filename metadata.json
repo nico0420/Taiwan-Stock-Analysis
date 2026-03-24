@@ -1,0 +1,5 @@
+{
+  "name": "Taiwan Stock Analysis",
+  "description": "A full-stack application for Taiwan stock analysis with K-line, MACD, KDJ, and Bollinger Bands charts.",
+  "requestFramePermissions": []
+}
