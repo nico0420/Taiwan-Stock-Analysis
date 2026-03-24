@@ -14,7 +14,7 @@ import {
   LineChart,
   Brush,
 } from "recharts";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Star, Trash2, PlusCircle, X, Bookmark, Menu } from "lucide-react";
 import { cn } from "../lib/utils";
 
 // Custom Candlestick Shape for Recharts
@@ -61,19 +61,83 @@ export default function StockDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [watchlist, setWatchlist] = useState<{symbol: string, name: string}[]>([]);
+  const [showWatchlist, setShowWatchlist] = useState(false);
+
+  // Load watchlist from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("stock_watchlist");
+    if (saved) {
+      try {
+        setWatchlist(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse watchlist");
+      }
+    }
+  }, []);
+
+  // Save watchlist to localStorage
+  useEffect(() => {
+    localStorage.setItem("stock_watchlist", JSON.stringify(watchlist));
+  }, [watchlist]);
+
+  const toggleWatchlist = (s: string, n: string) => {
+    const exists = watchlist.find(item => item.symbol === s);
+    if (exists) {
+      setWatchlist(watchlist.filter(item => item.symbol !== s));
+    } else {
+      if (watchlist.length >= 10) {
+        alert("觀察清單最多只能存放 10 檔股票喔！");
+        return;
+      }
+      setWatchlist([...watchlist, { symbol: s, name: n }]);
+    }
+  };
   
   // Fetch suggestions as user types
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (searchInput.trim().length >= 1 && showSuggestions) {
+      const trimmedInput = searchInput.trim();
+      if (trimmedInput.length >= 1 && showSuggestions) {
+        // Local suggestions for common Taiwan stocks to bypass API issues on Vercel
+        const localStocks = [
+          { symbol: "2330.TW", name: "台積電", exchange: "TWSE" },
+          { symbol: "2317.TW", name: "鴻海", exchange: "TWSE" },
+          { symbol: "2603.TW", name: "長榮", exchange: "TWSE" },
+          { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
+          { symbol: "2615.TW", name: "萬海", exchange: "TWSE" },
+          { symbol: "2454.TW", name: "聯發科", exchange: "TWSE" },
+          { symbol: "2002.TW", name: "中鋼", exchange: "TWSE" },
+          { symbol: "2881.TW", name: "富邦金", exchange: "TWSE" },
+          { symbol: "2882.TW", name: "國泰金", exchange: "TWSE" },
+          { symbol: "2303.TW", name: "聯電", exchange: "TWSE" },
+          { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
+          { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
+          { symbol: "3231.TW", name: "緯創", exchange: "TWSE" },
+          { symbol: "2382.TW", name: "廣達", exchange: "TWSE" },
+        ];
+
+        const localMatches = localStocks.filter(s => 
+          s.name.includes(trimmedInput) || s.symbol.startsWith(trimmedInput)
+        );
+
         try {
-          const res = await fetch(`/api/search?q=${encodeURIComponent(searchInput)}`);
+          const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedInput)}`);
           if (res.ok) {
-            const json = await res.json();
-            setSuggestions(json);
+            const apiSuggestions = await res.json();
+            // Combine local matches with API results, removing duplicates
+            const combined = [...localMatches];
+            apiSuggestions.forEach((apiS: any) => {
+              if (!combined.some(s => s.symbol === apiS.symbol)) {
+                combined.push(apiS);
+              }
+            });
+            setSuggestions(combined.slice(0, 10));
+          } else {
+            setSuggestions(localMatches);
           }
         } catch (err) {
-          console.error("Failed to fetch suggestions:", err);
+          setSuggestions(localMatches);
         }
       } else {
         setSuggestions([]);
@@ -235,12 +299,29 @@ export default function StockDashboard() {
                 </button>
               ))}
             </div>
-            <div className="hidden md:block text-xs text-zinc-500 font-mono">
-              SYSTEM_TIME: {formattedToday}
-            </div>
           </div>
 
-          <div className="relative w-full sm:w-64">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            {/* Watchlist Menu Button */}
+            <button
+              onClick={() => setShowWatchlist(!showWatchlist)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg border transition-all text-sm font-medium",
+                showWatchlist 
+                  ? "bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
+                  : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700"
+              )}
+            >
+              <Menu className="w-4 h-4" />
+              <span>選單</span>
+              {watchlist.length > 0 && (
+                <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full ml-1">
+                  {watchlist.length}
+                </span>
+              )}
+            </button>
+
+            <div className="relative flex-1 sm:w-64">
             <form onSubmit={handleSearch}>
               <input
                 type="text"
@@ -249,7 +330,10 @@ export default function StockDashboard() {
                   setSearchInput(e.target.value);
                   setShowSuggestions(true);
                 }}
-                onFocus={() => setShowSuggestions(true)}
+                onFocus={() => {
+                  setSearchInput("");
+                  setShowSuggestions(true);
+                }}
                 placeholder="輸入股票代號 (如: 2330)"
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-600"
               />
@@ -285,8 +369,9 @@ export default function StockDashboard() {
             )}
           </div>
         </div>
+      </div>
 
-        {loading ? (
+      {loading ? (
           <div className="flex flex-col items-center justify-center h-[600px] gap-4">
             <div className="relative">
               <Loader2 className="w-16 h-16 animate-spin text-blue-500/20" />
@@ -328,44 +413,151 @@ export default function StockDashboard() {
             </button>
           </div>
         ) : data && displayData ? (
-          <div className="space-y-4 animate-in fade-in duration-700">
-            
-            {/* Stock Info Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-zinc-900/50 p-4 sm:p-6 rounded-xl border border-zinc-800 backdrop-blur-sm">
-              <div className="space-y-1">
-                <div className="flex items-center gap-3">
-                  <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-                    {data.shortName}
-                  </h1>
-                  <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded text-xs sm:text-sm font-mono">
-                    {data.symbol.replace('.TW', '')}
-                  </span>
-                </div>
-                <p className="text-zinc-500 text-xs sm:text-sm">Yahoo Finance Real-time Data</p>
-              </div>
-              
-              <div className="flex items-end justify-between sm:justify-end gap-6 w-full sm:w-auto">
-                <div className="text-left sm:text-right">
-                  <div className={cn("text-3xl sm:text-4xl font-bold font-mono tracking-tighter", getPriceTrend(data.regularMarketPrice, data.regularMarketPrice - data.regularMarketChange).color)}>
-                    {formatNumber(data.regularMarketPrice)}
+          <div className="relative">
+            {/* Watchlist Overlay Menu */}
+            {showWatchlist && (
+              <>
+                <div 
+                  className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
+                  onClick={() => setShowWatchlist(false)}
+                />
+                <div className="fixed top-0 left-0 h-full w-full sm:w-80 bg-zinc-900 border-r border-zinc-800 p-6 shadow-2xl z-50 animate-in slide-in-from-left duration-300">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-blue-500/10 rounded-lg">
+                        <Bookmark className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <h3 className="text-lg font-bold text-zinc-100">
+                        我的觀察清單
+                      </h3>
+                    </div>
+                    <button 
+                      onClick={() => setShowWatchlist(false)}
+                      className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
-                  <div className={cn("text-xs sm:text-sm font-medium flex items-center justify-start sm:justify-end gap-1", getPriceTrend(data.regularMarketChange, 0).color)}>
-                    <span>{data.regularMarketChange > 0 ? "+" : ""}{formatNumber(data.regularMarketChange)}</span>
-                    <span>({data.regularMarketChangePercent > 0 ? "+" : ""}{formatNumber(data.regularMarketChangePercent)}%)</span>
+                  
+                  <div className="mb-6">
+                    <div className="flex justify-between items-center text-xs text-zinc-500 mb-2">
+                      <span>儲存上限</span>
+                      <span>{watchlist.length} / 10</span>
+                    </div>
+                    <div className="w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-blue-500 h-full transition-all duration-500" 
+                        style={{ width: `${(watchlist.length / 10) * 100}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="h-10 sm:h-12 w-px bg-zinc-800"></div>
-                <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-[10px] sm:text-xs">
-                  <span className="text-zinc-500">最高</span>
-                  <span className="text-zinc-100 font-mono">{formatNumber(displayData?.high)}</span>
-                  <span className="text-zinc-500">最低</span>
-                  <span className="text-zinc-100 font-mono">{formatNumber(displayData?.low)}</span>
-                </div>
-              </div>
-            </div>
+                  
+                  {watchlist.length === 0 ? (
+                    <div className="py-20 text-center space-y-4">
+                      <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto">
+                        <Star className="w-8 h-8 text-zinc-700" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-zinc-400">尚未加入任何股票</p>
+                        <p className="text-xs text-zinc-600 mt-1">點擊股票名稱旁的星號加入</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar max-h-[calc(100vh-250px)]">
+                      {watchlist.map((item) => (
+                        <div 
+                          key={item.symbol}
+                          className={cn(
+                            "group flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                            symbol === item.symbol 
+                              ? "bg-blue-600/10 border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.1)]" 
+                              : "bg-zinc-800/30 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50"
+                          )}
+                          onClick={() => {
+                            setSymbol(item.symbol);
+                            setSearchInput(item.symbol);
+                            setShowWatchlist(false);
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-base font-bold text-zinc-100">{item.symbol.split('.')[0]}</span>
+                            <span className="text-xs text-zinc-500 truncate max-w-[140px]">{item.name}</span>
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleWatchlist(item.symbol, item.name);
+                            }}
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-            {/* Charts Area */}
-            <div className="space-y-4">
+                  <div className="absolute bottom-8 left-6 right-6">
+                    <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
+                      <p className="text-[10px] text-zinc-500 leading-relaxed">
+                        提示：您可以將常用的股票加入觀察清單，方便快速切換查看即時走勢。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 animate-in fade-in duration-700">
+              {/* Main Content Area (Full Width) */}
+              <div className="space-y-4">
+                {/* Stock Info Header */}
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-zinc-900/50 p-4 sm:p-6 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-3">
+                      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                        {data.shortName || data.longName || symbol}
+                      </h1>
+                      <span className="px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded text-xs sm:text-sm font-mono">
+                        {data.symbol.replace('.TW', '')}
+                      </span>
+                      <button 
+                        onClick={() => toggleWatchlist(symbol, data.shortName || data.longName || symbol)}
+                        className={cn(
+                          "p-1 rounded-full transition-all",
+                          watchlist.some(item => item.symbol === symbol)
+                            ? "text-yellow-400"
+                            : "text-zinc-600 hover:text-zinc-400"
+                        )}
+                      >
+                        <Star className={cn("w-5 h-5", watchlist.some(item => item.symbol === symbol) && "fill-yellow-400")} />
+                      </button>
+                    </div>
+                    <p className="text-zinc-500 text-xs sm:text-sm">Yahoo Finance Real-time Data</p>
+                  </div>
+                  
+                  <div className="flex items-end justify-between sm:justify-end gap-6 w-full sm:w-auto">
+                    <div className="text-left sm:text-right">
+                      <div className={cn("text-3xl sm:text-4xl font-bold font-mono tracking-tighter", getPriceTrend(data.regularMarketPrice, data.regularMarketPrice - data.regularMarketChange).color)}>
+                        {formatNumber(data.regularMarketPrice)}
+                      </div>
+                      <div className={cn("text-xs sm:text-sm font-medium flex items-center justify-start sm:justify-end gap-1", getPriceTrend(data.regularMarketChange, 0).color)}>
+                        <span>{data.regularMarketChange > 0 ? "+" : ""}{formatNumber(data.regularMarketChange)}</span>
+                        <span>({data.regularMarketChangePercent > 0 ? "+" : ""}{formatNumber(data.regularMarketChangePercent)}%)</span>
+                      </div>
+                    </div>
+                    <div className="h-10 sm:h-12 w-px bg-zinc-800"></div>
+                    <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-[10px] sm:text-xs">
+                      <span className="text-zinc-500">最高</span>
+                      <span className="text-zinc-100 font-mono">{formatNumber(displayData?.high)}</span>
+                      <span className="text-zinc-500">最低</span>
+                      <span className="text-zinc-100 font-mono">{formatNumber(displayData?.low)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Charts Area */}
+                <div className="space-y-4">
               
               {/* Main Chart Section */}
               <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 backdrop-blur-sm overflow-hidden">
@@ -627,8 +819,10 @@ export default function StockDashboard() {
               </div>
             </div>
           </div>
-        ) : null}
+        </div>
       </div>
-    </div>
-  );
+    ) : null}
+  </div>
+</div>
+);
 }

@@ -173,17 +173,23 @@ async function createApp() {
 
   app.get("/api/search", async (req, res) => {
     try {
-      const query = (req.query.q as string || "").trim();
+      let query = (req.query.q as string || "").trim();
+      try {
+        query = decodeURIComponent(query);
+      } catch (e) {
+        // Ignore decoding errors
+      }
+      
       if (!query || query.length < 1) return res.json([]);
 
-      // Skip search if it contains Bopomofo (Zhuyin) as Yahoo doesn't support it and it often causes BadRequest
+      // Skip search if it contains Bopomofo (Zhuyin)
       if (/[\u3105-\u3129]/.test(query)) {
         return res.json([]);
       }
 
       let searchResult;
       try {
-        // Try with Taiwan specific parameters first, but simplify the request
+        // Try with Taiwan specific parameters first
         searchResult = await yahooFinance.search(query, { 
           lang: 'zh-Hant-TW', 
           region: 'TW',
@@ -192,10 +198,9 @@ async function createApp() {
         });
       } catch (e) {
         try {
-          // If it fails with BadRequest, try a very simple search
+          // Fallback to simple search
           searchResult = await yahooFinance.search(query, { quotesCount: 10, newsCount: 0 });
         } catch (e2) {
-          // If both fail, return empty array instead of 500 to keep UI clean
           return res.json([]);
         }
       }
@@ -212,38 +217,74 @@ async function createApp() {
 
       res.json(suggestions);
     } catch (error) {
-      // Catch-all for unexpected errors
       res.json([]);
     }
   });
 
   app.get("/api/stock/:symbol", async (req, res) => {
     try {
-      const rawInput = req.params.symbol.trim();
+      let rawInput = req.params.symbol.trim();
+      try {
+        rawInput = decodeURIComponent(rawInput);
+      } catch (e) {
+        // Ignore decoding errors
+      }
+      
       let symbol = rawInput.toUpperCase();
       const interval = (req.query.interval as string) || "1d";
       
-      // 1. Try to resolve the symbol if it's not a standard one (e.g., Chinese name or numeric code)
+      // 1. Try to resolve the symbol if it's not a standard one
       const isChinese = /[\u4e00-\u9fa5]/.test(symbol);
       const isNumeric = /^\d{4,6}$/.test(symbol);
       const isStandard = /^[A-Z0-9]+\.[A-Z]+$/.test(symbol);
 
-      // Common Taiwan Stock Mapping for quick resolution and fallback
+      // Common Taiwan Stock Mapping - Expanded for better reliability on Vercel
       const commonMappings: Record<string, string> = {
-        "台積電": "2330.TW",
-        "鴻海": "2317.TW",
-        "長榮": "2603.TW",
-        "陽明": "2609.TW",
-        "萬海": "2615.TW",
-        "聯發科": "2454.TW",
-        "中鋼": "2002.TW",
-        "台新金": "2887.TW",
-        "國泰金": "2882.TW",
-        "富邦金": "2881.TW",
+        "台積電": "2330.TW", "2330": "2330.TW",
+        "鴻海": "2317.TW", "2317": "2317.TW",
+        "長榮": "2603.TW", "2603": "2603.TW",
+        "陽明": "2609.TW", "2609": "2609.TW",
+        "萬海": "2615.TW", "2615": "2615.TW",
+        "聯發科": "2454.TW", "2454": "2454.TW",
+        "中鋼": "2002.TW", "2002": "2002.TW",
+        "台新金": "2887.TW", "2887": "2887.TW",
+        "國泰金": "2882.TW", "2882": "2882.TW",
+        "富邦金": "2881.TW", "2881": "2881.TW",
+        "長榮航": "2618.TW", "2618": "2618.TW",
+        "華航": "2610.TW", "2610": "2610.TW",
+        "廣達": "2382.TW", "2382": "2382.TW",
+        "緯創": "3231.TW", "3231": "3231.TW",
+        "技嘉": "2376.TW", "2376": "2376.TW",
+        "光寶科": "2301.TW", "2301": "2301.TW",
+        "友達": "2409.TW", "2409": "2409.TW",
+        "群創": "3481.TW", "3481": "3481.TW",
+        "台泥": "1101.TW", "1101": "1101.TW",
+        "亞泥": "1102.TW", "1102": "1102.TW",
+        "中信金": "2891.TW", "2891": "2891.TW",
+        "兆豐金": "2886.TW", "2886": "2886.TW",
+        "玉山金": "2884.TW", "2884": "2884.TW",
+        "第一金": "2892.TW", "2892": "2892.TW",
+        "合庫金": "5880.TW", "5880": "5880.TW",
+        "華南金": "2880.TW", "2880": "2880.TW",
+        "永豐金": "2890.TW", "2890": "2890.TW",
+        "開發金": "2883.TW", "2883": "2883.TW",
+        "元大金": "2885.TW", "2885": "2885.TW",
+        "台塑": "1301.TW", "1301": "1301.TW",
+        "南亞": "1303.TW", "1303": "1303.TW",
+        "台化": "1326.TW", "1326": "1326.TW",
+        "台塑化": "6505.TW", "6505": "6505.TW",
+        "聯電": "2303.TW", "2303": "2303.TW",
+        "日月光": "3711.TW", "3711": "3711.TW",
+        "大立光": "3008.TW", "3008": "3008.TW",
+        "長榮鋼": "2211.TW", "2211": "2211.TW",
+        "達邁": "3645.TW", "3645": "3645.TW",
+        "長榮航太": "2645.TW", "2645": "2645.TW",
       };
 
       if (commonMappings[rawInput]) {
         symbol = commonMappings[rawInput];
+      } else if (commonMappings[symbol]) {
+        symbol = commonMappings[symbol];
       } else if (isChinese || isNumeric || !isStandard) {
         try {
           // Try standard search with Taiwan parameters
@@ -281,15 +322,13 @@ async function createApp() {
             symbol = `${symbol}.TW`;
           }
         } catch (searchError) {
-          console.warn(`Search failed for "${symbol}", attempting fallback:`, searchError);
-          
           // If it's a numeric code, we can safely assume it's a Taiwan stock
           if (isNumeric && !symbol.includes('.')) {
             symbol = `${symbol}.TW`;
           } else if (isChinese) {
             // For Chinese names, if search fails, try one more time with a simpler search
             try {
-               const fallbackSearch = await yahooFinance.search(symbol); // Use raw symbol, not encoded
+               const fallbackSearch = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
                if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
                  symbol = (fallbackSearch.quotes[0] as any).symbol;
                }
