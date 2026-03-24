@@ -182,9 +182,37 @@ async function createApp() {
       
       if (!query || query.length < 1) return res.json([]);
 
+      // Local common stocks for quick response
+      const localCommonStocks = [
+        { symbol: "2330.TW", name: "台積電", exchange: "TWSE" },
+        { symbol: "2317.TW", name: "鴻海", exchange: "TWSE" },
+        { symbol: "2454.TW", name: "聯發科", exchange: "TWSE" },
+        { symbol: "2308.TW", name: "台達電", exchange: "TWSE" },
+        { symbol: "2303.TW", name: "聯電", exchange: "TWSE" },
+        { symbol: "2881.TW", name: "富邦金", exchange: "TWSE" },
+        { symbol: "2882.TW", name: "國泰金", exchange: "TWSE" },
+        { symbol: "2412.TW", name: "中華電", exchange: "TWSE" },
+        { symbol: "2886.TW", name: "兆豐金", exchange: "TWSE" },
+        { symbol: "2891.TW", name: "中信金", exchange: "TWSE" },
+        { symbol: "2002.TW", name: "中鋼", exchange: "TWSE" },
+        { symbol: "2382.TW", name: "廣達", exchange: "TWSE" },
+        { symbol: "3231.TW", name: "緯創", exchange: "TWSE" },
+        { symbol: "2603.TW", name: "長榮", exchange: "TWSE" },
+        { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
+        { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
+        { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
+        { symbol: "0050.TW", name: "元大台灣50", exchange: "TWSE" },
+        { symbol: "0056.TW", name: "元大高股息", exchange: "TWSE" },
+        { symbol: "00878.TW", name: "國泰永續高股息", exchange: "TWSE" },
+      ];
+
+      const localMatches = localCommonStocks.filter(s => 
+        s.name.includes(query) || s.symbol.startsWith(query.toUpperCase())
+      );
+
       // Skip search if it contains Bopomofo (Zhuyin)
       if (/[\u3105-\u3129]/.test(query)) {
-        return res.json([]);
+        return res.json(localMatches);
       }
 
       let searchResult;
@@ -201,11 +229,11 @@ async function createApp() {
           // Fallback to simple search
           searchResult = await yahooFinance.search(query, { quotesCount: 10, newsCount: 0 });
         } catch (e2) {
-          return res.json([]);
+          return res.json(localMatches);
         }
       }
 
-      const suggestions = (searchResult.quotes || [])
+      const apiSuggestions = (searchResult.quotes || [])
         .filter(q => 
           q.quoteType === 'EQUITY' && 
           (q.symbol.endsWith('.TW') || q.symbol.endsWith('.TWO'))
@@ -215,10 +243,17 @@ async function createApp() {
           name: (q as any).longname || (q as any).shortname || q.symbol,
           exchange: q.exchange,
           type: q.quoteType
-        }))
-        .slice(0, 8);
+        }));
 
-      res.json(suggestions);
+      // Combine local matches with API results, removing duplicates
+      const combined = [...localMatches];
+      apiSuggestions.forEach((apiS: any) => {
+        if (!combined.some(s => s.symbol === apiS.symbol)) {
+          combined.push(apiS);
+        }
+      });
+
+      res.json(combined.slice(0, 8));
     } catch (error) {
       res.json([]);
     }

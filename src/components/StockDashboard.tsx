@@ -21,6 +21,128 @@ import { cn } from "../lib/utils";
 const UP_COLOR = "#f87171";
 const DOWN_COLOR = "#4ade80";
 
+// Expanded local suggestions for common Taiwan stocks to bypass API issues on Vercel
+const LOCAL_STOCKS = [
+  { symbol: "2330.TW", name: "台積電", exchange: "TWSE" },
+  { symbol: "2317.TW", name: "鴻海", exchange: "TWSE" },
+  { symbol: "2454.TW", name: "聯發科", exchange: "TWSE" },
+  { symbol: "2308.TW", name: "台達電", exchange: "TWSE" },
+  { symbol: "2303.TW", name: "聯電", exchange: "TWSE" },
+  { symbol: "2881.TW", name: "富邦金", exchange: "TWSE" },
+  { symbol: "2882.TW", name: "國泰金", exchange: "TWSE" },
+  { symbol: "2412.TW", name: "中華電", exchange: "TWSE" },
+  { symbol: "2886.TW", name: "兆豐金", exchange: "TWSE" },
+  { symbol: "2891.TW", name: "中信金", exchange: "TWSE" },
+  { symbol: "1301.TW", name: "台塑", exchange: "TWSE" },
+  { symbol: "1303.TW", name: "南亞", exchange: "TWSE" },
+  { symbol: "2002.TW", name: "中鋼", exchange: "TWSE" },
+  { symbol: "2382.TW", name: "廣達", exchange: "TWSE" },
+  { symbol: "3231.TW", name: "緯創", exchange: "TWSE" },
+  { symbol: "2357.TW", name: "華碩", exchange: "TWSE" },
+  { symbol: "3711.TW", name: "日月光", exchange: "TWSE" },
+  { symbol: "2884.TW", name: "玉山金", exchange: "TWSE" },
+  { symbol: "2892.TW", name: "第一金", exchange: "TWSE" },
+  { symbol: "5880.TW", name: "合庫金", exchange: "TWSE" },
+  { symbol: "2880.TW", name: "華南金", exchange: "TWSE" },
+  { symbol: "2885.TW", name: "元大金", exchange: "TWSE" },
+  { symbol: "2890.TW", name: "永豐金", exchange: "TWSE" },
+  { symbol: "2883.TW", name: "開發金", exchange: "TWSE" },
+  { symbol: "2887.TW", name: "台新金", exchange: "TWSE" },
+  { symbol: "2603.TW", name: "長榮", exchange: "TWSE" },
+  { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
+  { symbol: "2615.TW", name: "萬海", exchange: "TWSE" },
+  { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
+  { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
+  { symbol: "2376.TW", name: "技嘉", exchange: "TWSE" },
+  { symbol: "2301.TW", name: "光寶科", exchange: "TWSE" },
+  { symbol: "2409.TW", name: "友達", exchange: "TWSE" },
+  { symbol: "3481.TW", name: "群創", exchange: "TWSE" },
+  { symbol: "1101.TW", name: "台泥", exchange: "TWSE" },
+  { symbol: "1102.TW", name: "亞泥", exchange: "TWSE" },
+  { symbol: "1326.TW", name: "台化", exchange: "TWSE" },
+  { symbol: "6505.TW", name: "台塑化", exchange: "TWSE" },
+  { symbol: "3008.TW", name: "大立光", exchange: "TWSE" },
+  { symbol: "2327.TW", name: "國巨", exchange: "TWSE" },
+  { symbol: "2379.TW", name: "瑞昱", exchange: "TWSE" },
+  { symbol: "3034.TW", name: "聯詠", exchange: "TWSE" },
+  { symbol: "3037.TW", name: "欣興", exchange: "TWSE" },
+  { symbol: "2344.TW", name: "華邦電", exchange: "TWSE" },
+  { symbol: "2337.TW", name: "旺宏", exchange: "TWSE" },
+  { symbol: "2408.TW", name: "南亞科", exchange: "TWSE" },
+  { symbol: "2353.TW", name: "宏碁", exchange: "TWSE" },
+  { symbol: "2324.TW", name: "仁寶", exchange: "TWSE" },
+  { symbol: "2356.TW", name: "英業達", exchange: "TWSE" },
+  { symbol: "4938.TW", name: "和碩", exchange: "TWSE" },
+  { symbol: "2313.TW", name: "華通", exchange: "TWSE" },
+  { symbol: "2368.TW", name: "金像電", exchange: "TWSE" },
+  { symbol: "6239.TW", name: "力成", exchange: "TWSE" },
+  { symbol: "2449.TW", name: "京元電子", exchange: "TWSE" },
+  { symbol: "3702.TW", name: "大聯大", exchange: "TWSE" },
+  { symbol: "2347.TW", name: "聯強", exchange: "TWSE" },
+  { symbol: "2352.TW", name: "佳世達", exchange: "TWSE" },
+  { symbol: "2354.TW", name: "鴻準", exchange: "TWSE" },
+  { symbol: "2377.TW", name: "微星", exchange: "TWSE" },
+  { symbol: "2395.TW", name: "研華", exchange: "TWSE" },
+  { symbol: "6669.TW", name: "緯穎", exchange: "TWSE" },
+  { symbol: "3661.TW", name: "世芯-KY", exchange: "TWSE" },
+  { symbol: "3443.TW", name: "創意", exchange: "TWSE" },
+  { symbol: "3035.TW", name: "智原", exchange: "TWSE" },
+  { symbol: "2458.TW", name: "義隆", exchange: "TWSE" },
+  { symbol: "2360.TW", name: "致茂", exchange: "TWSE" },
+  { symbol: "2312.TW", name: "金寶", exchange: "TWSE" },
+  { symbol: "2323.TW", name: "中環", exchange: "TWSE" },
+  { symbol: "2349.TW", name: "錸德", exchange: "TWSE" },
+  { symbol: "2367.TW", name: "燿華", exchange: "TWSE" },
+  { symbol: "2314.TW", name: "台揚", exchange: "TWSE" },
+  { symbol: "2332.TW", name: "友訊", exchange: "TWSE" },
+  { symbol: "2362.TW", name: "藍天", exchange: "TWSE" },
+  { symbol: "2363.TW", name: "矽統", exchange: "TWSE" },
+  { symbol: "2365.TW", name: "昆盈", exchange: "TWSE" },
+  { symbol: "2371.TW", name: "大同", exchange: "TWSE" },
+  { symbol: "2383.TW", name: "台光電", exchange: "TWSE" },
+  { symbol: "2385.TW", name: "群光", exchange: "TWSE" },
+  { symbol: "2392.TW", name: "正崴", exchange: "TWSE" },
+  { symbol: "2393.TW", name: "億光", exchange: "TWSE" },
+  { symbol: "2401.TW", name: "凌陽", exchange: "TWSE" },
+  { symbol: "2402.TW", name: "毅嘉", exchange: "TWSE" },
+  { symbol: "2404.TW", name: "漢唐", exchange: "TWSE" },
+  { symbol: "2406.TW", name: "國碩", exchange: "TWSE" },
+  { symbol: "2415.TW", name: "錩新", exchange: "TWSE" },
+  { symbol: "2419.TW", name: "仲琦", exchange: "TWSE" },
+  { symbol: "2420.TW", name: "新巨", exchange: "TWSE" },
+  { symbol: "2421.TW", name: "建準", exchange: "TWSE" },
+  { symbol: "2425.TW", name: "承啟", exchange: "TWSE" },
+  { symbol: "2428.TW", name: "興勤", exchange: "TWSE" },
+  { symbol: "2430.TW", name: "燦坤", exchange: "TWSE" },
+  { symbol: "2431.TW", name: "聯昌", exchange: "TWSE" },
+  { symbol: "2436.TW", name: "偉詮電", exchange: "TWSE" },
+  { symbol: "2439.TW", name: "美律", exchange: "TWSE" },
+  { symbol: "2441.TW", name: "超豐", exchange: "TWSE" },
+  { symbol: "2444.TW", name: "友勁", exchange: "TWSE" },
+  { symbol: "2451.TW", name: "創見", exchange: "TWSE" },
+  { symbol: "2455.TW", name: "全新", exchange: "TWSE" },
+  { symbol: "2457.TW", name: "飛宏", exchange: "TWSE" },
+  { symbol: "2460.TW", name: "建通", exchange: "TWSE" },
+  { symbol: "2461.TW", name: "光群雷", exchange: "TWSE" },
+  { symbol: "2464.TW", name: "盟立", exchange: "TWSE" },
+  { symbol: "2467.TW", name: "志聖", exchange: "TWSE" },
+  { symbol: "2474.TW", name: "可成", exchange: "TWSE" },
+  { symbol: "2476.TW", name: "鉅祥", exchange: "TWSE" },
+  { symbol: "2478.TW", name: "大毅", exchange: "TWSE" },
+  { symbol: "2480.TW", name: "敦陽科", exchange: "TWSE" },
+  { symbol: "2481.TW", name: "強茂", exchange: "TWSE" },
+  { symbol: "2485.TW", name: "兆赫", exchange: "TWSE" },
+  { symbol: "2486.TW", name: "一詮", exchange: "TWSE" },
+  { symbol: "2489.TW", name: "瑞軒", exchange: "TWSE" },
+  { symbol: "2497.TW", name: "怡利電", exchange: "TWSE" },
+  { symbol: "2498.TW", name: "宏達電", exchange: "TWSE" },
+  { symbol: "0050.TW", name: "元大台灣50", exchange: "TWSE" },
+  { symbol: "0056.TW", name: "元大高股息", exchange: "TWSE" },
+  { symbol: "00878.TW", name: "國泰永續高股息", exchange: "TWSE" },
+  { symbol: "00919.TW", name: "群益台灣精選高息", exchange: "TWSE" },
+  { symbol: "00929.TW", name: "復華台灣科技優息", exchange: "TWSE" },
+];
+
 const formatNumber = (num: number | null | undefined, decimals = 2) => {
   if (num == null) return "-";
   return num.toFixed(decimals);
@@ -167,26 +289,10 @@ export default function StockDashboard() {
     const timer = setTimeout(async () => {
       const trimmedInput = searchInput.trim();
       if (trimmedInput.length >= 1 && showSuggestions) {
-        // Local suggestions for common Taiwan stocks to bypass API issues on Vercel
-        const localStocks = [
-          { symbol: "2330.TW", name: "台積電", exchange: "TWSE" },
-          { symbol: "2317.TW", name: "鴻海", exchange: "TWSE" },
-          { symbol: "2603.TW", name: "長榮", exchange: "TWSE" },
-          { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
-          { symbol: "2615.TW", name: "萬海", exchange: "TWSE" },
-          { symbol: "2454.TW", name: "聯發科", exchange: "TWSE" },
-          { symbol: "2002.TW", name: "中鋼", exchange: "TWSE" },
-          { symbol: "2881.TW", name: "富邦金", exchange: "TWSE" },
-          { symbol: "2882.TW", name: "國泰金", exchange: "TWSE" },
-          { symbol: "2303.TW", name: "聯電", exchange: "TWSE" },
-          { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
-          { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
-          { symbol: "3231.TW", name: "緯創", exchange: "TWSE" },
-          { symbol: "2382.TW", name: "廣達", exchange: "TWSE" },
-        ];
-
-        const localMatches = localStocks.filter(s => 
-          s.name.includes(trimmedInput) || s.symbol.startsWith(trimmedInput)
+        const lowerInput = trimmedInput.toLowerCase();
+        const localMatches = LOCAL_STOCKS.filter(s => 
+          s.name.includes(trimmedInput) || 
+          s.symbol.toLowerCase().includes(lowerInput)
         );
 
         try {
@@ -257,14 +363,35 @@ export default function StockDashboard() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    let query = searchInput.trim().toUpperCase();
+    const query = searchInput.trim();
     if (query) {
-      // Automatically append .TW for 4-digit Taiwan stock codes
-      if (/^\d{4}$/.test(query)) {
-        query += ".TW";
-        setSearchInput(query);
+      // 1. Check if it's a perfect match in local stocks (by name or symbol)
+      const perfectMatch = LOCAL_STOCKS.find(s => 
+        s.name === query || 
+        s.symbol.toUpperCase() === query.toUpperCase() ||
+        s.symbol.split('.')[0] === query
+      );
+
+      if (perfectMatch) {
+        setSymbol(perfectMatch.symbol);
+        setSearchInput(perfectMatch.symbol);
+        setShowSuggestions(false);
+        return;
       }
-      setSymbol(query);
+
+      // 2. If suggestions are visible, pick the first one
+      if (suggestions.length > 0) {
+        handleSelectSuggestion(suggestions[0]);
+        return;
+      }
+
+      // 3. Fallback to raw query with .TW if it's 4 digits
+      let finalQuery = query.toUpperCase();
+      if (/^\d{4}$/.test(finalQuery)) {
+        finalQuery += ".TW";
+        setSearchInput(finalQuery);
+      }
+      setSymbol(finalQuery);
       setShowSuggestions(false);
     }
   };
@@ -384,19 +511,19 @@ export default function StockDashboard() {
             </button>
 
             <div className="relative flex-1 sm:w-64">
-            <form onSubmit={handleSearch}>
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => {
-                  setSearchInput("");
-                  setShowSuggestions(true);
-                }}
-                placeholder="輸入股票代號 (如: 2330)"
+              <form onSubmit={handleSearch}>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onFocus={(e) => {
+                    setSearchInput("");
+                    setShowSuggestions(true);
+                  }}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  placeholder="輸入股票代號 (如: 2330)"
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-600"
               />
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
