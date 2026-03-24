@@ -172,10 +172,9 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
   });
 }
 
-async function startServer() {
+async function createApp() {
   const app = express();
-  const PORT = 3000;
-
+  
   app.use(express.json());
 
   app.get("/api/stock/:symbol", async (req, res) => {
@@ -241,10 +240,21 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+  
+  return app;
+}
+
+async function startServer() {
+  const app = await createApp();
+  const PORT = 3000;
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  startServer();
+}
+
+export default createApp;
