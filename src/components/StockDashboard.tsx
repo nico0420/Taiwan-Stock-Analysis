@@ -165,7 +165,16 @@ export default function StockDashboard() {
         
         {/* Top Navigation / Search */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <img 
+                src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/51.png" 
+                alt="Dugtrio" 
+                className="w-8 h-8 object-contain"
+                referrerPolicy="no-referrer"
+              />
+              <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">股市三地鼠</span>
+            </div>
             <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
               {[
                 { label: "60分", value: "60m" },
@@ -206,8 +215,16 @@ export default function StockDashboard() {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center h-[600px] gap-4">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-            <p className="text-zinc-400 animate-pulse font-mono tracking-widest">INITIALIZING_DATA_STREAM...</p>
+            <div className="relative">
+              <Loader2 className="w-16 h-16 animate-spin text-blue-500/20" />
+              <img 
+                src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/51.png" 
+                alt="Loading Dugtrio" 
+                className="w-10 h-10 object-contain absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <p className="text-zinc-400 animate-pulse font-mono tracking-widest">三地鼠正在挖掘數據中...</p>
           </div>
         ) : error ? (
           <div className="flex items-center justify-center h-[600px] text-red-400 bg-red-500/5 border border-red-500/20 rounded-xl">
