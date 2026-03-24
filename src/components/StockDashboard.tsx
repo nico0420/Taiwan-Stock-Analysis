@@ -136,6 +136,12 @@ const LOCAL_STOCKS = [
   { symbol: "2489.TW", name: "瑞軒", exchange: "TWSE" },
   { symbol: "2497.TW", name: "怡利電", exchange: "TWSE" },
   { symbol: "2498.TW", name: "宏達電", exchange: "TWSE" },
+  { symbol: "6456.TW", name: "GIS-KY", exchange: "TWSE" },
+  { symbol: "6456.TW", name: "業成", exchange: "TWSE" },
+  { symbol: "6415.TW", name: "矽力*-KY", exchange: "TWSE" },
+  { symbol: "4966.TW", name: "譜瑞-KY", exchange: "TWSE" },
+  { symbol: "2723.TW", name: "美食-KY", exchange: "TWSE" },
+  { symbol: "5288.TW", name: "豐祥-KY", exchange: "TWSE" },
   { symbol: "0050.TW", name: "元大台灣50", exchange: "TWSE" },
   { symbol: "0056.TW", name: "元大高股息", exchange: "TWSE" },
   { symbol: "00878.TW", name: "國泰永續高股息", exchange: "TWSE" },
@@ -367,7 +373,7 @@ export default function StockDashboard() {
     if (query) {
       // 1. Check if it's a perfect match in local stocks (by name or symbol)
       const perfectMatch = LOCAL_STOCKS.find(s => 
-        s.name === query || 
+        s.name.toLowerCase() === query.toLowerCase() || 
         s.symbol.toUpperCase() === query.toUpperCase() ||
         s.symbol.split('.')[0] === query
       );
@@ -379,18 +385,42 @@ export default function StockDashboard() {
         return;
       }
 
-      // 2. If suggestions are visible, pick the first one
+      // 2. Fuzzy match in local stocks (if user typed part of the name)
+      const fuzzyMatch = LOCAL_STOCKS.find(s => 
+        s.name.includes(query) || 
+        s.symbol.toUpperCase().includes(query.toUpperCase())
+      );
+
+      if (fuzzyMatch) {
+        setSymbol(fuzzyMatch.symbol);
+        setSearchInput(fuzzyMatch.symbol);
+        setShowSuggestions(false);
+        return;
+      }
+
+      // 3. If suggestions are visible, pick the first one
       if (suggestions.length > 0) {
         handleSelectSuggestion(suggestions[0]);
         return;
       }
 
-      // 3. Fallback to raw query with .TW if it's 4 digits
+      // 4. Fallback to raw query with .TW if it's 4 digits
       let finalQuery = query.toUpperCase();
       if (/^\d{4}$/.test(finalQuery)) {
         finalQuery += ".TW";
         setSearchInput(finalQuery);
+        setSymbol(finalQuery);
+        setShowSuggestions(false);
+        return;
       }
+
+      // 5. If it contains Chinese and we haven't resolved it, don't search
+      // because Yahoo Finance API will fail with a Chinese name as a symbol
+      if (/[\u4e00-\u9fa5]/.test(query)) {
+        setError("找不到該股票，請嘗試輸入代號或從建議清單中選擇");
+        return;
+      }
+
       setSymbol(finalQuery);
       setShowSuggestions(false);
     }

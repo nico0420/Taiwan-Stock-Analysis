@@ -201,13 +201,15 @@ async function createApp() {
         { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
         { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
         { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
+        { symbol: "6456.TW", name: "GIS-KY", exchange: "TWSE" },
         { symbol: "0050.TW", name: "元大台灣50", exchange: "TWSE" },
         { symbol: "0056.TW", name: "元大高股息", exchange: "TWSE" },
         { symbol: "00878.TW", name: "國泰永續高股息", exchange: "TWSE" },
       ];
 
       const localMatches = localCommonStocks.filter(s => 
-        s.name.includes(query) || s.symbol.startsWith(query.toUpperCase())
+        s.name.toLowerCase().includes(query.toLowerCase()) || 
+        s.symbol.startsWith(query.toUpperCase())
       );
 
       // Skip search if it contains Bopomofo (Zhuyin)
