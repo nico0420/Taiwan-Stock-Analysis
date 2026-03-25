@@ -173,8 +173,99 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const symbolStr = Array.isArray(symbol) ? symbol[0] : symbol;
-    const symbolUpper = symbolStr.toUpperCase();
+    let symbolStr = Array.isArray(symbol) ? symbol[0] : symbol;
+    try {
+      symbolStr = decodeURIComponent(symbolStr);
+    } catch (e) {
+      // Ignore
+    }
+    let symbolUpper = symbolStr.toUpperCase().trim();
+    
+    // 1. Try to resolve the symbol if it's not a standard one
+    const isChinese = /[\u4e00-\u9fa5]/.test(symbolUpper);
+    const isNumeric = /^\d{4,6}$/.test(symbolUpper);
+    const isStandard = /^[A-Z0-9]+\.[A-Z]+$/.test(symbolUpper);
+
+    if (isChinese || isNumeric || !isStandard) {
+      let resolved = false;
+
+      // Try TWSE API for Chinese names or numeric codes
+      try {
+        const twseRes = await fetch(`https://www.twse.com.tw/zh/api/codeQuery?query=${encodeURIComponent(symbolUpper)}`);
+        if (twseRes.ok) {
+          const twseData = await twseRes.json();
+          if (twseData && twseData.suggestions && twseData.suggestions[0] !== '(無符合之代碼或名稱)') {
+            // Find exact match or first match
+            const match = twseData.suggestions.find((s: string) => {
+              const parts = s.split('\t');
+              return parts[1] === symbolUpper || parts[0] === symbolUpper;
+            }) || twseData.suggestions[0];
+            
+            if (match) {
+              const code = match.split('\t')[0];
+              symbolUpper = `${code}.TW`;
+              resolved = true;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("TWSE API error:", e);
+      }
+
+      if (!resolved) {
+        try {
+          // Try standard search with Taiwan parameters
+          let searchResult;
+          try {
+            searchResult = await yahooFinance.search(symbolUpper, { 
+              lang: 'zh-Hant-TW', 
+              region: 'TW',
+              quotesCount: 5,
+              newsCount: 0
+            });
+          } catch (e) {
+            // Fallback to simple search if BadRequest occurs
+            searchResult = await yahooFinance.search(symbolUpper, { quotesCount: 5, newsCount: 0 });
+          }
+          
+          if (!searchResult || !searchResult.quotes || searchResult.quotes.length === 0) {
+            // If first search yields nothing, try appending " stock"
+            try {
+              searchResult = await yahooFinance.search(`${symbolUpper} stock`, { quotesCount: 5, newsCount: 0 });
+            } catch (e) {
+              // Ignore search errors in fallback
+            }
+          }
+
+          if (searchResult && searchResult.quotes && searchResult.quotes.length > 0) {
+            const bestMatch = searchResult.quotes.find(q => 
+              q.quoteType === 'EQUITY' && ((q as any).symbol?.endsWith('.TW') || (q as any).symbol?.endsWith('.TWO'))
+            ) || searchResult.quotes.find(q => q.quoteType === 'EQUITY') || searchResult.quotes[0];
+            
+            if ((bestMatch as any).symbol) {
+              symbolUpper = (bestMatch as any).symbol;
+            }
+          } else if (isNumeric && !symbolUpper.includes('.')) {
+            symbolUpper = `${symbolUpper}.TW`;
+          }
+        } catch (searchError) {
+          // If it's a numeric code, we can safely assume it's a Taiwan stock
+          if (isNumeric && !symbolUpper.includes('.')) {
+            symbolUpper = `${symbolUpper}.TW`;
+          } else if (isChinese) {
+            // For Chinese names, if search fails, try one more time with a simpler search
+            try {
+               const fallbackSearch = await yahooFinance.search(symbolUpper, { quotesCount: 5, newsCount: 0 });
+               if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
+                 symbolUpper = (fallbackSearch.quotes[0] as any).symbol;
+               }
+            } catch (e) {
+               // Final fallback
+            }
+          }
+        }
+      }
+    }
     
     const validIntervals = ["60m", "1d", "1wk", "1mo"];
     const queryInterval = validIntervals.includes(interval) ? interval as any : "1d";
