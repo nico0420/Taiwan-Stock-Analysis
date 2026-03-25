@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ComposedChart,
   Line,
@@ -16,236 +16,11 @@ import {
 } from "recharts";
 import { Search, Loader2, Star, Trash2, PlusCircle, X, Bookmark, Menu } from "lucide-react";
 import { cn } from "../lib/utils";
-
-// Taiwan stock colors: Red for Up, Green for Down (Neon for dark mode)
-const UP_COLOR = "#f87171";
-const DOWN_COLOR = "#4ade80";
-
-// Expanded local suggestions for common Taiwan stocks to bypass API issues on Vercel
-const LOCAL_STOCKS = [
-  { symbol: "2330.TW", name: "台積電", exchange: "TWSE" },
-  { symbol: "2317.TW", name: "鴻海", exchange: "TWSE" },
-  { symbol: "2454.TW", name: "聯發科", exchange: "TWSE" },
-  { symbol: "2308.TW", name: "台達電", exchange: "TWSE" },
-  { symbol: "2303.TW", name: "聯電", exchange: "TWSE" },
-  { symbol: "2881.TW", name: "富邦金", exchange: "TWSE" },
-  { symbol: "2882.TW", name: "國泰金", exchange: "TWSE" },
-  { symbol: "2412.TW", name: "中華電", exchange: "TWSE" },
-  { symbol: "2886.TW", name: "兆豐金", exchange: "TWSE" },
-  { symbol: "2891.TW", name: "中信金", exchange: "TWSE" },
-  { symbol: "1301.TW", name: "台塑", exchange: "TWSE" },
-  { symbol: "1303.TW", name: "南亞", exchange: "TWSE" },
-  { symbol: "2002.TW", name: "中鋼", exchange: "TWSE" },
-  { symbol: "2382.TW", name: "廣達", exchange: "TWSE" },
-  { symbol: "3231.TW", name: "緯創", exchange: "TWSE" },
-  { symbol: "2357.TW", name: "華碩", exchange: "TWSE" },
-  { symbol: "3711.TW", name: "日月光", exchange: "TWSE" },
-  { symbol: "2884.TW", name: "玉山金", exchange: "TWSE" },
-  { symbol: "2892.TW", name: "第一金", exchange: "TWSE" },
-  { symbol: "5880.TW", name: "合庫金", exchange: "TWSE" },
-  { symbol: "2880.TW", name: "華南金", exchange: "TWSE" },
-  { symbol: "2885.TW", name: "元大金", exchange: "TWSE" },
-  { symbol: "2890.TW", name: "永豐金", exchange: "TWSE" },
-  { symbol: "2883.TW", name: "開發金", exchange: "TWSE" },
-  { symbol: "2887.TW", name: "台新金", exchange: "TWSE" },
-  { symbol: "2603.TW", name: "長榮", exchange: "TWSE" },
-  { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
-  { symbol: "2615.TW", name: "萬海", exchange: "TWSE" },
-  { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
-  { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
-  { symbol: "2376.TW", name: "技嘉", exchange: "TWSE" },
-  { symbol: "2301.TW", name: "光寶科", exchange: "TWSE" },
-  { symbol: "2409.TW", name: "友達", exchange: "TWSE" },
-  { symbol: "3481.TW", name: "群創", exchange: "TWSE" },
-  { symbol: "1101.TW", name: "台泥", exchange: "TWSE" },
-  { symbol: "1102.TW", name: "亞泥", exchange: "TWSE" },
-  { symbol: "1326.TW", name: "台化", exchange: "TWSE" },
-  { symbol: "6505.TW", name: "台塑化", exchange: "TWSE" },
-  { symbol: "3008.TW", name: "大立光", exchange: "TWSE" },
-  { symbol: "2327.TW", name: "國巨", exchange: "TWSE" },
-  { symbol: "2379.TW", name: "瑞昱", exchange: "TWSE" },
-  { symbol: "3034.TW", name: "聯詠", exchange: "TWSE" },
-  { symbol: "3037.TW", name: "欣興", exchange: "TWSE" },
-  { symbol: "2344.TW", name: "華邦電", exchange: "TWSE" },
-  { symbol: "2337.TW", name: "旺宏", exchange: "TWSE" },
-  { symbol: "2408.TW", name: "南亞科", exchange: "TWSE" },
-  { symbol: "2353.TW", name: "宏碁", exchange: "TWSE" },
-  { symbol: "2324.TW", name: "仁寶", exchange: "TWSE" },
-  { symbol: "2356.TW", name: "英業達", exchange: "TWSE" },
-  { symbol: "4938.TW", name: "和碩", exchange: "TWSE" },
-  { symbol: "2313.TW", name: "華通", exchange: "TWSE" },
-  { symbol: "2368.TW", name: "金像電", exchange: "TWSE" },
-  { symbol: "6239.TW", name: "力成", exchange: "TWSE" },
-  { symbol: "2449.TW", name: "京元電子", exchange: "TWSE" },
-  { symbol: "3702.TW", name: "大聯大", exchange: "TWSE" },
-  { symbol: "2347.TW", name: "聯強", exchange: "TWSE" },
-  { symbol: "2352.TW", name: "佳世達", exchange: "TWSE" },
-  { symbol: "2354.TW", name: "鴻準", exchange: "TWSE" },
-  { symbol: "2377.TW", name: "微星", exchange: "TWSE" },
-  { symbol: "2395.TW", name: "研華", exchange: "TWSE" },
-  { symbol: "6669.TW", name: "緯穎", exchange: "TWSE" },
-  { symbol: "3661.TW", name: "世芯-KY", exchange: "TWSE" },
-  { symbol: "3443.TW", name: "創意", exchange: "TWSE" },
-  { symbol: "3035.TW", name: "智原", exchange: "TWSE" },
-  { symbol: "2458.TW", name: "義隆", exchange: "TWSE" },
-  { symbol: "2360.TW", name: "致茂", exchange: "TWSE" },
-  { symbol: "2312.TW", name: "金寶", exchange: "TWSE" },
-  { symbol: "2323.TW", name: "中環", exchange: "TWSE" },
-  { symbol: "2349.TW", name: "錸德", exchange: "TWSE" },
-  { symbol: "2367.TW", name: "燿華", exchange: "TWSE" },
-  { symbol: "2314.TW", name: "台揚", exchange: "TWSE" },
-  { symbol: "2332.TW", name: "友訊", exchange: "TWSE" },
-  { symbol: "2362.TW", name: "藍天", exchange: "TWSE" },
-  { symbol: "2363.TW", name: "矽統", exchange: "TWSE" },
-  { symbol: "2365.TW", name: "昆盈", exchange: "TWSE" },
-  { symbol: "2371.TW", name: "大同", exchange: "TWSE" },
-  { symbol: "2383.TW", name: "台光電", exchange: "TWSE" },
-  { symbol: "2385.TW", name: "群光", exchange: "TWSE" },
-  { symbol: "2392.TW", name: "正崴", exchange: "TWSE" },
-  { symbol: "2393.TW", name: "億光", exchange: "TWSE" },
-  { symbol: "2401.TW", name: "凌陽", exchange: "TWSE" },
-  { symbol: "2402.TW", name: "毅嘉", exchange: "TWSE" },
-  { symbol: "2404.TW", name: "漢唐", exchange: "TWSE" },
-  { symbol: "2406.TW", name: "國碩", exchange: "TWSE" },
-  { symbol: "2415.TW", name: "錩新", exchange: "TWSE" },
-  { symbol: "2419.TW", name: "仲琦", exchange: "TWSE" },
-  { symbol: "2420.TW", name: "新巨", exchange: "TWSE" },
-  { symbol: "2421.TW", name: "建準", exchange: "TWSE" },
-  { symbol: "2425.TW", name: "承啟", exchange: "TWSE" },
-  { symbol: "2428.TW", name: "興勤", exchange: "TWSE" },
-  { symbol: "2430.TW", name: "燦坤", exchange: "TWSE" },
-  { symbol: "2431.TW", name: "聯昌", exchange: "TWSE" },
-  { symbol: "2436.TW", name: "偉詮電", exchange: "TWSE" },
-  { symbol: "2439.TW", name: "美律", exchange: "TWSE" },
-  { symbol: "2441.TW", name: "超豐", exchange: "TWSE" },
-  { symbol: "2444.TW", name: "友勁", exchange: "TWSE" },
-  { symbol: "2451.TW", name: "創見", exchange: "TWSE" },
-  { symbol: "2455.TW", name: "全新", exchange: "TWSE" },
-  { symbol: "2457.TW", name: "飛宏", exchange: "TWSE" },
-  { symbol: "2460.TW", name: "建通", exchange: "TWSE" },
-  { symbol: "2461.TW", name: "光群雷", exchange: "TWSE" },
-  { symbol: "2464.TW", name: "盟立", exchange: "TWSE" },
-  { symbol: "2467.TW", name: "志聖", exchange: "TWSE" },
-  { symbol: "2474.TW", name: "可成", exchange: "TWSE" },
-  { symbol: "2476.TW", name: "鉅祥", exchange: "TWSE" },
-  { symbol: "2478.TW", name: "大毅", exchange: "TWSE" },
-  { symbol: "2480.TW", name: "敦陽科", exchange: "TWSE" },
-  { symbol: "2481.TW", name: "強茂", exchange: "TWSE" },
-  { symbol: "2485.TW", name: "兆赫", exchange: "TWSE" },
-  { symbol: "2486.TW", name: "一詮", exchange: "TWSE" },
-  { symbol: "2489.TW", name: "瑞軒", exchange: "TWSE" },
-  { symbol: "2497.TW", name: "怡利電", exchange: "TWSE" },
-  { symbol: "2498.TW", name: "宏達電", exchange: "TWSE" },
-  { symbol: "6456.TW", name: "GIS-KY", exchange: "TWSE" },
-  { symbol: "6456.TW", name: "業成", exchange: "TWSE" },
-  { symbol: "6415.TW", name: "矽力*-KY", exchange: "TWSE" },
-  { symbol: "4966.TW", name: "譜瑞-KY", exchange: "TWSE" },
-  { symbol: "2723.TW", name: "美食-KY", exchange: "TWSE" },
-  { symbol: "5288.TW", name: "豐祥-KY", exchange: "TWSE" },
-  { symbol: "0050.TW", name: "元大台灣50", exchange: "TWSE" },
-  { symbol: "0056.TW", name: "元大高股息", exchange: "TWSE" },
-  { symbol: "00878.TW", name: "國泰永續高股息", exchange: "TWSE" },
-  { symbol: "00919.TW", name: "群益台灣精選高息", exchange: "TWSE" },
-  { symbol: "00929.TW", name: "復華台灣科技優息", exchange: "TWSE" },
-];
-
-const formatNumber = (num: number | null | undefined, decimals = 2) => {
-  if (num == null) return "-";
-  return num.toFixed(decimals);
-};
-
-const getPriceTrend = (val: number | null | undefined, ref: number | null | undefined) => {
-  if (val == null || ref == null) return { icon: "", color: "text-zinc-100" };
-  if (val > ref) return { icon: "▲", color: "text-red-400" };
-  if (val < ref) return { icon: "▼", color: "text-green-400" };
-  return { icon: "", color: "text-zinc-100" };
-};
-
-const getIndicatorTrend = (current: number | null | undefined, prev: number | null | undefined) => {
-  if (current == null || prev == null) return { icon: "", color: "text-zinc-400" };
-  if (current > prev) return { icon: "▲", color: "text-red-400" };
-  if (current < prev) return { icon: "▼", color: "text-green-400" };
-  return { icon: "", color: "text-zinc-400" };
-};
-
-// Custom Candlestick Shape for Recharts
-const Candlestick = (props: any) => {
-  const { x, y, width, height, payload } = props;
-  const { open, close, high, low } = payload;
-
-  if (open == null || close == null || high == null || low == null) {
-    return null;
-  }
-
-  const isUp = close > open;
-  const color = isUp ? UP_COLOR : DOWN_COLOR;
-
-  if (high === low) {
-    return <rect x={x} y={y} width={width} height={1} fill={color} />;
-  }
-
-  const ratio = height / (high - low);
-  const yOpen = y + (high - open) * ratio;
-  const yClose = y + (high - close) * ratio;
-
-  const bodyTop = Math.min(yOpen, yClose);
-  const bodyHeight = Math.max(Math.abs(yOpen - yClose), 1);
-
-  const wickX = x + width / 2;
-
-  return (
-    <g>
-      <line x1={wickX} y1={y} x2={wickX} y2={y + height} stroke={color} strokeWidth={1.5} />
-      <rect x={x} y={bodyTop} width={width} height={bodyHeight} fill={color} stroke={color} fillOpacity={0.8} />
-    </g>
-  );
-};
-
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    const isUp = data.close > data.open;
-    const color = isUp ? "text-red-400" : "text-green-400";
-    
-    return (
-      <div className="bg-zinc-900/95 border border-zinc-700 p-2 rounded-lg shadow-2xl backdrop-blur-md text-[10px] sm:text-xs min-w-[120px] z-50 pointer-events-none">
-        <div className="text-zinc-400 mb-1 font-mono border-b border-zinc-800 pb-1">{data.date}</div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-          <span className="text-zinc-500">開盤</span>
-          <span className="text-zinc-100 font-mono text-right">{formatNumber(data.open)}</span>
-          <span className="text-zinc-500">最高</span>
-          <span className="text-red-400 font-mono text-right">{formatNumber(data.high)}</span>
-          <span className="text-zinc-500">最低</span>
-          <span className="text-green-400 font-mono text-right">{formatNumber(data.low)}</span>
-          <span className="text-zinc-500">收盤</span>
-          <span className={cn("font-mono text-right", color)}>{formatNumber(data.close)}</span>
-          <span className="text-zinc-500 pt-1 border-t border-zinc-800">成交量</span>
-          <span className="text-zinc-100 font-mono text-right pt-1 border-t border-zinc-800">{formatNumber(data.volume / 1000, 0)}張</span>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
-const IndicatorTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-zinc-900/95 border border-zinc-700 p-2 rounded-lg shadow-2xl backdrop-blur-md text-[10px] sm:text-xs min-w-[100px] z-50 pointer-events-none">
-        <div className="text-zinc-400 mb-1 font-mono border-b border-zinc-800 pb-1">{label}</div>
-        <div className="space-y-1">
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex justify-between gap-4">
-              <span style={{ color: entry.color }}>{entry.name}</span>
-              <span className="text-zinc-100 font-mono">{formatNumber(entry.value)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
+import { StockHeader } from "./StockHeader";
+import { StockChart } from "./StockChart";
+import { IndicatorChart } from "./IndicatorChart";
+import { Watchlist } from "./Watchlist";
+import { formatNumber, getIndicatorTrend, getPriceTrend, Candlestick, CustomTooltip, IndicatorTooltip } from "./StockTooltips";
 
 export default function StockDashboard() {
   const [symbol, setSymbol] = useState("2330.TW");
@@ -259,6 +34,7 @@ export default function StockDashboard() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [watchlist, setWatchlist] = useState<{symbol: string, name: string}[]>([]);
   const [showWatchlist, setShowWatchlist] = useState(false);
+  const cache = useRef(new Map<string, any>());
 
   // Load watchlist from localStorage
   useEffect(() => {
@@ -295,19 +71,12 @@ export default function StockDashboard() {
     const timer = setTimeout(async () => {
       const trimmedInput = searchInput.trim();
       if (trimmedInput.length >= 1 && showSuggestions) {
-        const lowerInput = trimmedInput.toLowerCase();
-        const localMatches = LOCAL_STOCKS.filter(s => 
-          s.name.includes(trimmedInput) || 
-          s.symbol.toLowerCase().includes(lowerInput)
-        );
-
         try {
           const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedInput)}`);
           if (res.ok) {
             const apiSuggestions = await res.json();
-            // Combine local matches with API results, removing duplicates
             // Ensure only Taiwan stocks are included
-            const combined = [...localMatches];
+            const combined: any[] = [];
             apiSuggestions.forEach((apiS: any) => {
               const isTaiwan = apiS.symbol.endsWith('.TW') || apiS.symbol.endsWith('.TWO');
               if (isTaiwan && !combined.some(s => s.symbol === apiS.symbol)) {
@@ -316,10 +85,10 @@ export default function StockDashboard() {
             });
             setSuggestions(combined.slice(0, 10));
           } else {
-            setSuggestions(localMatches);
+            setSuggestions([]);
           }
         } catch (err) {
-          setSuggestions(localMatches);
+          setSuggestions([]);
         }
       } else {
         setSuggestions([]);
@@ -338,6 +107,14 @@ export default function StockDashboard() {
   });
 
   const fetchData = async (stockSymbol: string, queryInterval: string) => {
+    const cacheKey = `${stockSymbol}_${queryInterval}`;
+    if (cache.current.has(cacheKey)) {
+      setData(cache.current.get(cacheKey));
+      setHoveredIndex(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
@@ -348,14 +125,28 @@ export default function StockDashboard() {
       }
       const json = await res.json();
       
+      if (!json.historical || json.historical.length === 0) {
+        throw new Error("此區間暫無歷史資料");
+      }
+      
       // Prepare data for Recharts
       const formattedData = json.historical.map((d: any) => ({
         ...d,
         candle: [d.low, d.high], // For the custom candlestick shape
       }));
       
-      setData({ ...json, historical: formattedData });
-      setHoveredIndex(formattedData.length - 1);
+      const result = { ...json, historical: formattedData };
+      cache.current.set(cacheKey, result);
+      
+      // Update symbol if backend resolved it differently
+      if (json.symbol && json.symbol !== stockSymbol) {
+        cache.current.set(`${json.symbol}_${queryInterval}`, result);
+        setSymbol(json.symbol);
+        setSearchInput(json.symbol);
+      }
+      
+      setData(result);
+      setHoveredIndex(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -371,56 +162,19 @@ export default function StockDashboard() {
     e.preventDefault();
     const query = searchInput.trim();
     if (query) {
-      // 1. Check if it's a perfect match in local stocks (by name or symbol)
-      const perfectMatch = LOCAL_STOCKS.find(s => 
-        s.name.toLowerCase() === query.toLowerCase() || 
-        s.symbol.toUpperCase() === query.toUpperCase() ||
-        s.symbol.split('.')[0] === query
-      );
-
-      if (perfectMatch) {
-        setSymbol(perfectMatch.symbol);
-        setSearchInput(perfectMatch.symbol);
-        setShowSuggestions(false);
-        return;
-      }
-
-      // 2. Fuzzy match in local stocks (if user typed part of the name)
-      const fuzzyMatch = LOCAL_STOCKS.find(s => 
-        s.name.includes(query) || 
-        s.symbol.toUpperCase().includes(query.toUpperCase())
-      );
-
-      if (fuzzyMatch) {
-        setSymbol(fuzzyMatch.symbol);
-        setSearchInput(fuzzyMatch.symbol);
-        setShowSuggestions(false);
-        return;
-      }
-
-      // 3. If suggestions are visible, pick the first one
+      // 1. If suggestions are visible, pick the first one
       if (suggestions.length > 0) {
         handleSelectSuggestion(suggestions[0]);
         return;
       }
 
-      // 4. Fallback to raw query with .TW if it's 4 digits
+      // 2. Fallback to raw query with .TW if it's 4 digits
       let finalQuery = query.toUpperCase();
       if (/^\d{4}$/.test(finalQuery)) {
         finalQuery += ".TW";
-        setSearchInput(finalQuery);
-        setSymbol(finalQuery);
-        setShowSuggestions(false);
-        return;
       }
 
-      // 5. If it contains Chinese and we haven't resolved it, don't search
-      // because Yahoo Finance API will fail with a Chinese name as a symbol
-      if (/[\u4e00-\u9fa5]/.test(query)) {
-        setError("找不到該股票，請嘗試輸入代號或從建議清單中選擇");
-        return;
-      }
-
+      setSearchInput(finalQuery);
       setSymbol(finalQuery);
       setShowSuggestions(false);
     }
@@ -434,15 +188,20 @@ export default function StockDashboard() {
   };
 
   const handleMouseMove = (e: any) => {
-    if (e.activeTooltipIndex != null) {
+    if (e && e.activePayload && e.activePayload.length > 0) {
+      const hoveredData = e.activePayload[0].payload;
+      // Find the absolute index in the original historical data by matching the date
+      const absoluteIndex = data?.historical?.findIndex((d: any) => d.date === hoveredData.date);
+      if (absoluteIndex !== undefined && absoluteIndex !== -1) {
+        setHoveredIndex(absoluteIndex);
+      }
+    } else if (e && e.activeTooltipIndex != null) {
       setHoveredIndex(e.activeTooltipIndex);
     }
   };
 
   const handleMouseLeave = () => {
-    if (data?.historical) {
-      setHoveredIndex(data.historical.length - 1);
-    }
+    setHoveredIndex(null);
   };
 
   const displayIndex = hoveredIndex !== null ? hoveredIndex : (data?.historical ? data.historical.length - 1 : 0);
@@ -486,108 +245,22 @@ export default function StockDashboard() {
       
       <div className="max-w-7xl mx-auto space-y-4 relative z-10">
         
-        {/* Top Navigation / Search */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <img 
-                src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/51.png" 
-                alt="Dugtrio" 
-                className="w-8 h-8 object-contain"
-                referrerPolicy="no-referrer"
-              />
-              <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">股市三地鼠</span>
-            </div>
-            <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-              {[
-                { label: "60分", value: "60m" },
-                { label: "日線", value: "1d" },
-                { label: "週線", value: "1wk" },
-                { label: "月線", value: "1mo" },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setInterval(opt.value)}
-                  className={`px-3 py-1 text-sm rounded-md transition-all ${
-                    interval === opt.value
-                      ? "bg-blue-600 text-white font-medium shadow-[0_0_15px_rgba(37,99,235,0.4)]"
-                      : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            {/* Watchlist Menu Button */}
-            <button
-              onClick={() => setShowWatchlist(!showWatchlist)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg border transition-all text-sm font-medium",
-                showWatchlist 
-                  ? "bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
-                  : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700"
-              )}
-            >
-              <Menu className="w-4 h-4" />
-              <span>選單</span>
-              {watchlist.length > 0 && (
-                <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full ml-1">
-                  {watchlist.length}
-                </span>
-              )}
-            </button>
-
-            <div className="relative flex-1 sm:w-64">
-              <form onSubmit={handleSearch}>
-                <input
-                  type="text"
-                  value={searchInput}
-                  onFocus={(e) => {
-                    setSearchInput("");
-                    setShowSuggestions(true);
-                  }}
-                  onChange={(e) => {
-                    setSearchInput(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  placeholder="輸入股票代號 (如: 2330)"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-zinc-600"
-              />
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
-              <button type="submit" className="hidden">搜尋</button>
-            </form>
-
-            {/* Suggestions Dropdown */}
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-xl">
-                {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelectSuggestion(s)}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-0 text-left"
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-zinc-100">{s.name}</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">{s.exchange}</span>
-                    </div>
-                    <span className="text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">{s.symbol}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            
-            {/* Click outside to close suggestions */}
-            {showSuggestions && (
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setShowSuggestions(false)}
-              />
-            )}
-          </div>
-        </div>
+        <StockHeader
+          symbol={symbol}
+          setSymbol={setSymbol}
+          searchInput={searchInput}
+          setSearchInput={setSearchInput}
+          suggestions={suggestions}
+          showSuggestions={showSuggestions}
+          setShowSuggestions={setShowSuggestions}
+          interval={interval}
+          setInterval={setInterval}
+          watchlist={watchlist}
+          showWatchlist={showWatchlist}
+          setShowWatchlist={setShowWatchlist}
+          handleSearch={handleSearch}
+          handleSelectSuggestion={handleSelectSuggestion}
+        />
       </div>
 
       {loading ? (
@@ -615,117 +288,47 @@ export default function StockDashboard() {
               />
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-xl font-bold text-zinc-200">哎呀！地鼠找不到這檔股票</h3>
+              <h3 className="text-xl font-bold text-zinc-200">
+                {error === "此區間暫無歷史資料" ? "暫無歷史資料" : "哎呀！地鼠找不到這檔股票"}
+              </h3>
               <p className="text-zinc-500 text-sm max-w-xs mx-auto">
-                搜尋的代號「<span className="text-zinc-300 font-mono">{symbol}</span>」可能不存在、已下市，或是輸入格式有誤。
+                {error === "此區間暫無歷史資料" 
+                  ? `「${symbol}」在目前選擇的時間區間內沒有可用的歷史資料，請嘗試切換其他區間。`
+                  : error.includes("找不到該股票資料") ? error : `搜尋的代號「${symbol}」可能不存在、已下市，或是輸入格式有誤。`
+                }
               </p>
+              {error !== "此區間暫無歷史資料" && !error.includes("找不到該股票資料") && (
+                <p className="text-red-400/80 text-xs mt-2 font-mono">{error}</p>
+              )}
             </div>
             <button 
               onClick={() => {
-                setSearchInput("2330.TW");
-                setSymbol("2330.TW");
-                setError("");
+                if (error === "此區間暫無歷史資料") {
+                  setInterval("1d");
+                  setError("");
+                } else {
+                  setSearchInput("2330.TW");
+                  setSymbol("2330.TW");
+                  setError("");
+                }
               }}
               className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full text-sm font-medium transition-all border border-zinc-700"
             >
-              返回台積電 (2330)
+              {error === "此區間暫無歷史資料" ? "切換回日線" : "返回台積電 (2330)"}
             </button>
           </div>
         ) : data && displayData ? (
           <div className="relative">
             {/* Watchlist Overlay Menu */}
-            {showWatchlist && (
-              <>
-                <div 
-                  className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
-                  onClick={() => setShowWatchlist(false)}
-                />
-                <div className="fixed top-0 left-0 h-full w-full sm:w-80 bg-zinc-900 border-r border-zinc-800 p-6 shadow-2xl z-50 animate-in slide-in-from-left duration-300">
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <Bookmark className="w-5 h-5 text-blue-400" />
-                      </div>
-                      <h3 className="text-lg font-bold text-zinc-100">
-                        我的觀察清單
-                      </h3>
-                    </div>
-                    <button 
-                      onClick={() => setShowWatchlist(false)}
-                      className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                  
-                  <div className="mb-6">
-                    <div className="flex justify-between items-center text-xs text-zinc-500 mb-2">
-                      <span>儲存上限</span>
-                      <span>{watchlist.length} / 10</span>
-                    </div>
-                    <div className="w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-blue-500 h-full transition-all duration-500" 
-                        style={{ width: `${(watchlist.length / 10) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  
-                  {watchlist.length === 0 ? (
-                    <div className="py-20 text-center space-y-4">
-                      <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto">
-                        <Star className="w-8 h-8 text-zinc-700" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-zinc-400">尚未加入任何股票</p>
-                        <p className="text-xs text-zinc-600 mt-1">點擊股票名稱旁的星號加入</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar max-h-[calc(100vh-250px)]">
-                      {watchlist.map((item) => (
-                        <div 
-                          key={item.symbol}
-                          className={cn(
-                            "group flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                            symbol === item.symbol 
-                              ? "bg-blue-600/10 border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.1)]" 
-                              : "bg-zinc-800/30 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50"
-                          )}
-                          onClick={() => {
-                            setSymbol(item.symbol);
-                            setSearchInput(item.symbol);
-                            setShowWatchlist(false);
-                          }}
-                        >
-                          <div className="flex flex-col">
-                            <span className="text-base font-bold text-zinc-100">{item.symbol.split('.')[0]}</span>
-                            <span className="text-xs text-zinc-500 truncate max-w-[140px]">{item.name}</span>
-                          </div>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleWatchlist(item.symbol, item.name);
-                            }}
-                            className="p-2 rounded-lg hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="absolute bottom-8 left-6 right-6">
-                    <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
-                      <p className="text-[10px] text-zinc-500 leading-relaxed">
-                        提示：您可以將常用的股票加入觀察清單，方便快速切換查看即時走勢。
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+            <Watchlist
+              showWatchlist={showWatchlist}
+              setShowWatchlist={setShowWatchlist}
+              watchlist={watchlist}
+              symbol={symbol}
+              setSymbol={setSymbol}
+              setSearchInput={setSearchInput}
+              toggleWatchlist={toggleWatchlist}
+            />
 
             <div className="grid grid-cols-1 gap-4 animate-in fade-in duration-700">
               {/* Main Content Area (Full Width) */}
@@ -777,271 +380,35 @@ export default function StockDashboard() {
 
                 {/* Charts Area */}
                 <div className="space-y-4">
-              
-              {/* Main Chart Section */}
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 backdrop-blur-sm overflow-hidden">
-                {/* Chart Header / Indicators Toggle */}
-                <div className="flex flex-wrap items-center justify-between gap-4 mb-4 px-2">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex items-center gap-2 bg-black/40 rounded-md p-1 border border-zinc-800">
-                      {Object.entries(activeMAs).map(([key, active]) => (
-                        <button
-                          key={key}
-                          onClick={() => setActiveMAs(prev => ({ ...prev, [key]: !active }))}
-                          className={cn(
-                            "px-2 py-0.5 text-[10px] uppercase font-bold rounded transition-all",
-                            active 
-                              ? "bg-zinc-800 text-white border border-zinc-700" 
-                              : "text-zinc-600 hover:text-zinc-400"
-                          )}
-                          style={active ? { color: (maColors as any)[key] || (key === 'bollinger' ? maColors.bbUpper : '#fff') } : {}}
-                        >
-                          {key === 'bollinger' ? '布林' : key.toUpperCase()}
-                        </button>
-                      ))}
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono">
-                      {Object.entries(activeMAs).map(([key, active]) => {
-                        if (!active || key === 'bollinger') return null;
-                        const val = displayData?.[key];
-                        const prevVal = prevData?.[key];
-                        const trend = getIndicatorTrend(val, prevVal);
-                        return (
-                          <div key={key} className="flex items-center gap-1.5">
-                            <span style={{ color: (maColors as any)[key] }}>{key.toUpperCase()}</span>
-                            <span className="text-zinc-100">{formatNumber(val)}</span>
-                            <span className={trend.color}>{trend.icon}</span>
-                          </div>
-                        );
-                      })}
-                      {activeMAs.bollinger && (
-                        <div className="flex items-center gap-3">
-                          <span style={{ color: maColors.bbUpper }}>布林</span>
-                          <span className="text-zinc-400">上:{formatNumber(displayData?.bbUpper)}</span>
-                          <span className="text-zinc-400">中:{formatNumber(displayData?.bbMiddle)}</span>
-                          <span className="text-zinc-400">下:{formatNumber(displayData?.bbLower)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="sm:hidden flex items-center gap-1 text-[10px] text-zinc-500 font-mono animate-pulse">
-                    <span>← 左右滑動查看 K線 →</span>
-                  </div>
-                </div>
-
-                {/* Scrollable Chart Container */}
-                <div className="overflow-x-auto custom-scrollbar -mx-2 px-2">
-                  <div className="h-[300px] sm:h-[450px] w-full min-w-[800px] sm:min-w-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart 
-                        data={data.historical} 
-                        syncId="stockChart" 
-                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                        onMouseMove={handleMouseMove}
-                        onMouseLeave={handleMouseLeave}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={true} />
-                        <XAxis 
-                          dataKey="date" 
-                          stroke="#52525b" 
-                          fontSize={10} 
-                          tickMargin={8} 
-                          minTickGap={window.innerWidth < 640 ? 50 : 30} 
-                          axisLine={{ stroke: '#3f3f46' }}
-                          tickFormatter={(val) => {
-                            if (window.innerWidth >= 640) return val;
-                            const parts = val.split('-');
-                            if (parts.length >= 3) return `${parts[1]}-${parts[2]}`;
-                            return val;
-                          }}
-                        />
-                        <YAxis 
-                          domain={["auto", "auto"]} 
-                          orientation="right" 
-                          stroke="#52525b" 
-                          fontSize={10} 
-                          tickFormatter={(val) => val?.toFixed(0) ?? ""} 
-                          axisLine={{ stroke: '#3f3f46' }}
-                        />
-                        <Tooltip 
-                          content={<CustomTooltip />}
-                          cursor={{ stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '3 3' }}
-                        />
-                        
-                        {/* Bollinger Bands Area */}
-                        {activeMAs.bollinger && (
-                          <>
-                            <Line 
-                              type="monotone" 
-                              dataKey="bbUpper" 
-                              stroke={maColors.bbUpper} 
-                              strokeWidth={1.5} 
-                              dot={false} 
-                              strokeOpacity={0.8}
-                              isAnimationActive={false} 
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="bbLower" 
-                              stroke={maColors.bbLower} 
-                              strokeWidth={1.5} 
-                              dot={false} 
-                              strokeOpacity={0.8}
-                              isAnimationActive={false} 
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="bbMiddle" 
-                              stroke={maColors.bbMiddle} 
-                              strokeWidth={1} 
-                              strokeDasharray="3 3"
-                              dot={false} 
-                              strokeOpacity={0.6}
-                              isAnimationActive={false} 
-                            />
-                          </>
-                        )}
-
-                        {/* Moving Averages */}
-                        {activeMAs.ma5 && <Line type="monotone" dataKey="ma5" stroke={maColors.ma5} strokeWidth={1.2} dot={false} isAnimationActive={false} />}
-                        {activeMAs.ma10 && <Line type="monotone" dataKey="ma10" stroke={maColors.ma10} strokeWidth={1.2} dot={false} isAnimationActive={false} />}
-                        {activeMAs.ma20 && <Line type="monotone" dataKey="ma20" stroke={maColors.ma20} strokeWidth={1.2} dot={false} isAnimationActive={false} />}
-                        {activeMAs.ma60 && <Line type="monotone" dataKey="ma60" stroke={maColors.ma60} strokeWidth={1.2} dot={false} isAnimationActive={false} />}
-                        
-                        {/* Candlesticks */}
-                        <Bar dataKey="candle" shape={<Candlestick />} isAnimationActive={false} />
-
-                        <Brush 
-                          dataKey="date" 
-                          height={20} 
-                          stroke="#3f3f46" 
-                          fill="#18181b"
-                          travellerWidth={10}
-                          gap={5}
-                        >
-                          <LineChart>
-                            <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} isAnimationActive={false} />
-                          </LineChart>
-                        </Brush>
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Indicators Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                
-                {/* Volume Chart */}
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-3 px-2">
-                    <div className="text-xs font-bold text-zinc-400 uppercase tracking-wider">成交量 (張)</div>
-                    <div className="text-xs font-mono text-zinc-100">
-                      {formatNumber(displayData?.volume / 1000, 0)} 張
-                    </div>
-                  </div>
-                  <div className="h-[100px] sm:h-[120px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={data.historical} syncId="stockChart" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                        <XAxis dataKey="date" hide />
-                        <YAxis hide orientation="right" />
-                        <Tooltip content={<IndicatorTooltip />} cursor={{ fill: '#3f3f46', fillOpacity: 0.3 }} />
-                        <Bar dataKey="volume" isAnimationActive={false}>
-                          {data.historical.map((entry: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={entry.close > entry.open ? "#f87171" : "#4ade80"} fillOpacity={0.6} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* MACD Chart */}
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-3 px-2">
-                    <div className="text-xs font-bold text-zinc-400 uppercase tracking-wider">MACD (12,26,9)</div>
-                    <div className="flex gap-3 text-[10px] font-mono">
-                      <div className="flex items-center gap-1">
-                        <span className="text-blue-400">DIF:{formatNumber(displayData?.macdDif)}</span>
-                        <span className={getIndicatorTrend(displayData?.macdDif, prevData?.macdDif).color}>
-                          {getIndicatorTrend(displayData?.macdDif, prevData?.macdDif).icon}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-yellow-400">DEA:{formatNumber(displayData?.macdDea)}</span>
-                        <span className={getIndicatorTrend(displayData?.macdDea, prevData?.macdDea).color}>
-                          {getIndicatorTrend(displayData?.macdDea, prevData?.macdDea).icon}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="h-[100px] sm:h-[120px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={data.historical} syncId="stockChart" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                        <XAxis dataKey="date" hide />
-                        <YAxis hide orientation="right" />
-                        <Tooltip content={<IndicatorTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
-                        <Bar dataKey="macdHist" isAnimationActive={false}>
-                          {data.historical.map((entry: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={entry.macdHist > 0 ? "#ef4444" : "#22c55e"} />
-                          ))}
-                        </Bar>
-                        <Line type="monotone" dataKey="macdDif" stroke="#60a5fa" strokeWidth={1} dot={false} isAnimationActive={false} />
-                        <Line type="monotone" dataKey="macdDea" stroke="#facc15" strokeWidth={1} dot={false} isAnimationActive={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* KDJ Chart */}
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-3 px-2">
-                    <div className="text-xs font-bold text-zinc-400 uppercase tracking-wider">KDJ (9,3,3)</div>
-                    <div className="flex gap-3 text-[10px] font-mono">
-                      <div className="flex items-center gap-1">
-                        <span className="text-blue-400">K:{formatNumber(displayData?.kdjK)}</span>
-                        <span className={getIndicatorTrend(displayData?.kdjK, prevData?.kdjK).color}>
-                          {getIndicatorTrend(displayData?.kdjK, prevData?.kdjK).icon}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-purple-400">D:{formatNumber(displayData?.kdjD)}</span>
-                        <span className={getIndicatorTrend(displayData?.kdjD, prevData?.kdjD).color}>
-                          {getIndicatorTrend(displayData?.kdjD, prevData?.kdjD).icon}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-orange-400">J:{formatNumber(displayData?.kdjJ)}</span>
-                        <span className={getIndicatorTrend(displayData?.kdjJ, prevData?.kdjJ).color}>
-                          {getIndicatorTrend(displayData?.kdjJ, prevData?.kdjJ).icon}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="h-[100px] sm:h-[120px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={data.historical} syncId="stockChart" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                        <XAxis dataKey="date" hide />
-                        <YAxis domain={[0, 100]} hide orientation="right" />
-                        <Tooltip content={<IndicatorTooltip />} cursor={{ stroke: '#3f3f46', strokeWidth: 1 }} />
-                        <Line type="monotone" dataKey="kdjK" stroke="#3b82f6" strokeWidth={1} dot={false} isAnimationActive={false} />
-                        <Line type="monotone" dataKey="kdjD" stroke="#a855f7" strokeWidth={1} dot={false} isAnimationActive={false} />
-                        <Line type="monotone" dataKey="kdjJ" stroke="#f97316" strokeWidth={1} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                  <StockChart
+                    data={data}
+                    activeMAs={activeMAs}
+                    setActiveMAs={setActiveMAs}
+                    maColors={maColors}
+                    displayData={displayData}
+                    prevData={prevData}
+                    handleMouseMove={handleMouseMove}
+                    handleMouseLeave={handleMouseLeave}
+                  />
+                  <IndicatorChart
+                    type="volume"
+                    data={data}
+                    displayData={displayData}
+                    handleMouseMove={handleMouseMove}
+                    handleMouseLeave={handleMouseLeave}
+                  />
+                  <IndicatorChart
+                    type="kdj"
+                    data={data}
+                    displayData={displayData}
+                    handleMouseMove={handleMouseMove}
+                    handleMouseLeave={handleMouseLeave}
+                  />
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    ) : null}
-  </div>
-</div>
-);
+        ) : null}
+    </div>
+  );
 }

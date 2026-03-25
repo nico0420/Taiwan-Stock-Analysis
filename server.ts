@@ -182,80 +182,68 @@ async function createApp() {
       
       if (!query || query.length < 1) return res.json([]);
 
-      // Local common stocks for quick response
-      const localCommonStocks = [
-        { symbol: "2330.TW", name: "台積電", exchange: "TWSE" },
-        { symbol: "2317.TW", name: "鴻海", exchange: "TWSE" },
-        { symbol: "2454.TW", name: "聯發科", exchange: "TWSE" },
-        { symbol: "2308.TW", name: "台達電", exchange: "TWSE" },
-        { symbol: "2303.TW", name: "聯電", exchange: "TWSE" },
-        { symbol: "2881.TW", name: "富邦金", exchange: "TWSE" },
-        { symbol: "2882.TW", name: "國泰金", exchange: "TWSE" },
-        { symbol: "2412.TW", name: "中華電", exchange: "TWSE" },
-        { symbol: "2886.TW", name: "兆豐金", exchange: "TWSE" },
-        { symbol: "2891.TW", name: "中信金", exchange: "TWSE" },
-        { symbol: "2002.TW", name: "中鋼", exchange: "TWSE" },
-        { symbol: "2382.TW", name: "廣達", exchange: "TWSE" },
-        { symbol: "3231.TW", name: "緯創", exchange: "TWSE" },
-        { symbol: "2603.TW", name: "長榮", exchange: "TWSE" },
-        { symbol: "2609.TW", name: "陽明", exchange: "TWSE" },
-        { symbol: "2618.TW", name: "長榮航", exchange: "TWSE" },
-        { symbol: "2610.TW", name: "華航", exchange: "TWSE" },
-        { symbol: "6456.TW", name: "GIS-KY", exchange: "TWSE" },
-        { symbol: "0050.TW", name: "元大台灣50", exchange: "TWSE" },
-        { symbol: "0056.TW", name: "元大高股息", exchange: "TWSE" },
-        { symbol: "00878.TW", name: "國泰永續高股息", exchange: "TWSE" },
-      ];
+      const isChinese = /[\u4e00-\u9fa5]/.test(query);
+      const isNumeric = /^\d+$/.test(query);
+      
+      let suggestions: any[] = [];
 
-      const localMatches = localCommonStocks.filter(s => 
-        s.name.toLowerCase().includes(query.toLowerCase()) || 
-        s.symbol.startsWith(query.toUpperCase())
-      );
-
-      // Skip search if it contains Bopomofo (Zhuyin)
-      if (/[\u3105-\u3129]/.test(query)) {
-        return res.json(localMatches);
-      }
-
-      let searchResult;
-      try {
-        // Try with Taiwan specific parameters first
-        searchResult = await yahooFinance.search(query, { 
-          lang: 'zh-Hant-TW', 
-          region: 'TW',
-          quotesCount: 10,
-          newsCount: 0 
-        });
-      } catch (e) {
+      // Try TWSE API first for Chinese or numeric queries
+      if (isChinese || isNumeric) {
         try {
-          // Fallback to simple search
-          searchResult = await yahooFinance.search(query, { quotesCount: 10, newsCount: 0 });
-        } catch (e2) {
-          return res.json(localMatches);
+          const twseRes = await fetch(`https://www.twse.com.tw/zh/api/codeQuery?query=${encodeURIComponent(query)}`);
+          if (twseRes.ok) {
+            const twseData = await twseRes.json();
+            if (twseData && twseData.suggestions && twseData.suggestions[0] !== '(無符合之代碼或名稱)') {
+              suggestions = twseData.suggestions.map((s: string) => {
+                const parts = s.split('\t');
+                return {
+                  symbol: `${parts[0]}.TW`,
+                  name: parts[1],
+                  exchange: 'TWSE',
+                  type: 'EQUITY'
+                };
+              });
+            }
+          }
+        } catch (e) {
+          console.error("TWSE API search error:", e);
         }
       }
 
-      const apiSuggestions = (searchResult.quotes || [])
-        .filter(q => 
-          q.quoteType === 'EQUITY' && 
-          (q.symbol.endsWith('.TW') || q.symbol.endsWith('.TWO'))
-        )
-        .map(q => ({
-          symbol: q.symbol,
-          name: (q as any).longname || (q as any).shortname || q.symbol,
-          exchange: q.exchange,
-          type: q.quoteType
-        }));
-
-      // Combine local matches with API results, removing duplicates
-      const combined = [...localMatches];
-      apiSuggestions.forEach((apiS: any) => {
-        if (!combined.some(s => s.symbol === apiS.symbol)) {
-          combined.push(apiS);
+      // Fallback to Yahoo Finance if TWSE API didn't return anything or it's not Chinese/numeric
+      if (suggestions.length === 0) {
+        let searchResult;
+        try {
+          // Try with Taiwan specific parameters first
+          searchResult = await yahooFinance.search(query, { 
+            lang: 'zh-Hant-TW', 
+            region: 'TW',
+            quotesCount: 10,
+            newsCount: 0 
+          });
+        } catch (e) {
+          try {
+            // Fallback to simple search
+            searchResult = await yahooFinance.search(query, { quotesCount: 10, newsCount: 0 });
+          } catch (e2) {
+            return res.json([]);
+          }
         }
-      });
 
-      res.json(combined.slice(0, 8));
+        suggestions = (searchResult.quotes || [])
+          .filter(q => 
+            q.quoteType === 'EQUITY' && 
+            (q.symbol.endsWith('.TW') || q.symbol.endsWith('.TWO'))
+          )
+          .map(q => ({
+            symbol: q.symbol,
+            name: (q as any).longname || (q as any).shortname || q.symbol,
+            exchange: q.exchange,
+            type: q.quoteType
+          }));
+      }
+
+      res.json(suggestions.slice(0, 8));
     } catch (error) {
       res.json([]);
     }
@@ -278,102 +266,82 @@ async function createApp() {
       const isNumeric = /^\d{4,6}$/.test(symbol);
       const isStandard = /^[A-Z0-9]+\.[A-Z]+$/.test(symbol);
 
-      // Common Taiwan Stock Mapping - Expanded for better reliability on Vercel
-      const commonMappings: Record<string, string> = {
-        "台積電": "2330.TW", "2330": "2330.TW",
-        "鴻海": "2317.TW", "2317": "2317.TW",
-        "長榮": "2603.TW", "2603": "2603.TW",
-        "陽明": "2609.TW", "2609": "2609.TW",
-        "萬海": "2615.TW", "2615": "2615.TW",
-        "聯發科": "2454.TW", "2454": "2454.TW",
-        "中鋼": "2002.TW", "2002": "2002.TW",
-        "台新金": "2887.TW", "2887": "2887.TW",
-        "國泰金": "2882.TW", "2882": "2882.TW",
-        "富邦金": "2881.TW", "2881": "2881.TW",
-        "長榮航": "2618.TW", "2618": "2618.TW",
-        "華航": "2610.TW", "2610": "2610.TW",
-        "廣達": "2382.TW", "2382": "2382.TW",
-        "緯創": "3231.TW", "3231": "3231.TW",
-        "技嘉": "2376.TW", "2376": "2376.TW",
-        "光寶科": "2301.TW", "2301": "2301.TW",
-        "友達": "2409.TW", "2409": "2409.TW",
-        "群創": "3481.TW", "3481": "3481.TW",
-        "台泥": "1101.TW", "1101": "1101.TW",
-        "亞泥": "1102.TW", "1102": "1102.TW",
-        "中信金": "2891.TW", "2891": "2891.TW",
-        "兆豐金": "2886.TW", "2886": "2886.TW",
-        "玉山金": "2884.TW", "2884": "2884.TW",
-        "第一金": "2892.TW", "2892": "2892.TW",
-        "合庫金": "5880.TW", "5880": "5880.TW",
-        "華南金": "2880.TW", "2880": "2880.TW",
-        "永豐金": "2890.TW", "2890": "2890.TW",
-        "開發金": "2883.TW", "2883": "2883.TW",
-        "元大金": "2885.TW", "2885": "2885.TW",
-        "台塑": "1301.TW", "1301": "1301.TW",
-        "南亞": "1303.TW", "1303": "1303.TW",
-        "台化": "1326.TW", "1326": "1326.TW",
-        "台塑化": "6505.TW", "6505": "6505.TW",
-        "聯電": "2303.TW", "2303": "2303.TW",
-        "日月光": "3711.TW", "3711": "3711.TW",
-        "大立光": "3008.TW", "3008": "3008.TW",
-        "長榮鋼": "2211.TW", "2211": "2211.TW",
-        "達邁": "3645.TW", "3645": "3645.TW",
-        "長榮航太": "2645.TW", "2645": "2645.TW",
-      };
+      if (isChinese || isNumeric || !isStandard) {
+        let resolved = false;
 
-      if (commonMappings[rawInput]) {
-        symbol = commonMappings[rawInput];
-      } else if (commonMappings[symbol]) {
-        symbol = commonMappings[symbol];
-      } else if (isChinese || isNumeric || !isStandard) {
+        // Try TWSE API for Chinese names or numeric codes
         try {
-          // Try standard search with Taiwan parameters
-          let searchResult;
-          try {
-            searchResult = await yahooFinance.search(symbol, { 
-              lang: 'zh-Hant-TW', 
-              region: 'TW',
-              quotesCount: 5,
-              newsCount: 0
-            });
-          } catch (e) {
-            // Fallback to simple search if BadRequest occurs
-            searchResult = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
-          }
-          
-          if (!searchResult || !searchResult.quotes || searchResult.quotes.length === 0) {
-            // If first search yields nothing, try appending " stock"
-            try {
-              searchResult = await yahooFinance.search(`${symbol} stock`, { quotesCount: 5, newsCount: 0 });
-            } catch (e) {
-              // Ignore search errors in fallback
+          const twseRes = await fetch(`https://www.twse.com.tw/zh/api/codeQuery?query=${encodeURIComponent(symbol)}`);
+          if (twseRes.ok) {
+            const twseData = await twseRes.json();
+            if (twseData && twseData.suggestions && twseData.suggestions[0] !== '(無符合之代碼或名稱)') {
+              // Find exact match or first match
+              const match = twseData.suggestions.find((s: string) => {
+                const parts = s.split('\t');
+                return parts[1] === symbol || parts[0] === symbol;
+              }) || twseData.suggestions[0];
+              
+              if (match) {
+                const code = match.split('\t')[0];
+                symbol = `${code}.TW`;
+                resolved = true;
+              }
             }
           }
+        } catch (e) {
+          console.error("TWSE API error:", e);
+        }
 
-          if (searchResult && searchResult.quotes && searchResult.quotes.length > 0) {
-            const bestMatch = searchResult.quotes.find(q => 
-              q.quoteType === 'EQUITY' && ((q as any).symbol?.endsWith('.TW') || (q as any).symbol?.endsWith('.TWO'))
-            ) || searchResult.quotes.find(q => q.quoteType === 'EQUITY') || searchResult.quotes[0];
-            
-            if ((bestMatch as any).symbol) {
-              symbol = (bestMatch as any).symbol;
-            }
-          } else if (isNumeric && !symbol.includes('.')) {
-            symbol = `${symbol}.TW`;
-          }
-        } catch (searchError) {
-          // If it's a numeric code, we can safely assume it's a Taiwan stock
-          if (isNumeric && !symbol.includes('.')) {
-            symbol = `${symbol}.TW`;
-          } else if (isChinese) {
-            // For Chinese names, if search fails, try one more time with a simpler search
+        if (!resolved) {
+          try {
+            // Try standard search with Taiwan parameters
+            let searchResult;
             try {
-               const fallbackSearch = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
-               if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
-                 symbol = (fallbackSearch.quotes[0] as any).symbol;
-               }
+              searchResult = await yahooFinance.search(symbol, { 
+                lang: 'zh-Hant-TW', 
+                region: 'TW',
+                quotesCount: 5,
+                newsCount: 0
+              });
             } catch (e) {
-               // Final fallback
+              // Fallback to simple search if BadRequest occurs
+              searchResult = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
+            }
+            
+            if (!searchResult || !searchResult.quotes || searchResult.quotes.length === 0) {
+              // If first search yields nothing, try appending " stock"
+              try {
+                searchResult = await yahooFinance.search(`${symbol} stock`, { quotesCount: 5, newsCount: 0 });
+              } catch (e) {
+                // Ignore search errors in fallback
+              }
+            }
+
+            if (searchResult && searchResult.quotes && searchResult.quotes.length > 0) {
+              const bestMatch = searchResult.quotes.find(q => 
+                q.quoteType === 'EQUITY' && ((q as any).symbol?.endsWith('.TW') || (q as any).symbol?.endsWith('.TWO'))
+              ) || searchResult.quotes.find(q => q.quoteType === 'EQUITY') || searchResult.quotes[0];
+              
+              if ((bestMatch as any).symbol) {
+                symbol = (bestMatch as any).symbol;
+              }
+            } else if (isNumeric && !symbol.includes('.')) {
+              symbol = `${symbol}.TW`;
+            }
+          } catch (searchError) {
+            // If it's a numeric code, we can safely assume it's a Taiwan stock
+            if (isNumeric && !symbol.includes('.')) {
+              symbol = `${symbol}.TW`;
+            } else if (isChinese) {
+              // For Chinese names, if search fails, try one more time with a simpler search
+              try {
+                 const fallbackSearch = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
+                 if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
+                   symbol = (fallbackSearch.quotes[0] as any).symbol;
+                 }
+              } catch (e) {
+                 // Final fallback
+              }
             }
           }
         }
@@ -408,10 +376,10 @@ async function createApp() {
             symbol = `${rawInput.toUpperCase()}.TW`;
             chartResult = await yahooFinance.chart(symbol, queryOptions);
           } catch (e) {
-            throw chartError;
+            return res.status(404).json({ error: `找不到該股票資料 (${symbol})，可能已下市或代號錯誤` });
           }
         } else {
-          throw chartError;
+          return res.status(404).json({ error: `找不到該股票資料 (${symbol})，可能已下市或代號錯誤` });
         }
       }
 
@@ -420,7 +388,7 @@ async function createApp() {
       );
       
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: `No data found for symbol: ${symbol}. It might be delisted or the symbol is incorrect.` });
+        return res.status(404).json({ error: `找不到該股票資料 (${symbol})，可能已下市或代號錯誤` });
       }
 
       const enrichedData = calculateIndicators(result, queryInterval, chartResult.meta.exchangeTimezoneName);
