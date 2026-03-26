@@ -111,28 +111,20 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
     };
-    if (interval === "60m") {
-      options.hour = '2-digit';
-      options.minute = '2-digit';
-      options.hour12 = false;
-    }
     
     const formatter = new Intl.DateTimeFormat('en-CA', options);
     const parts = formatter.formatToParts(q.date);
     
-    let year, month, day, hour, minute;
-    for (const part of parts) {
-      if (part.type === 'year') year = part.value;
-      if (part.type === 'month') month = part.value;
-      if (part.type === 'day') day = part.value;
-      if (part.type === 'hour') hour = part.value;
-      if (part.type === 'minute') minute = part.value;
-    }
+    const p: any = {};
+    parts.forEach(part => p[part.type] = part.value);
     
-    let dateStr = `${year}-${month}-${day}`;
-    if (interval === "60m") {
-      dateStr = `${dateStr} ${hour}:${minute}`;
+    let dateStr = `${p.year}-${p.month}-${p.day}`;
+    if (interval === "1m" || interval === "5m" || interval === "60m") {
+      dateStr = `${dateStr} ${p.hour}:${p.minute}`;
     }
 
     let changePercent = null;
@@ -165,45 +157,42 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { symbol } = req.query;
+  const { symbol: rawSymbol } = req.query;
   const interval = (req.query.interval as string) || "1d";
 
-  if (!symbol) {
+  if (!rawSymbol) {
     return res.status(400).json({ error: "Symbol is required" });
   }
 
   try {
-    let symbolStr = Array.isArray(symbol) ? symbol[0] : symbol;
+    let symbol = Array.isArray(rawSymbol) ? rawSymbol[0] : rawSymbol;
     try {
-      symbolStr = decodeURIComponent(symbolStr);
+      symbol = decodeURIComponent(symbol);
     } catch (e) {
       // Ignore
     }
-    let symbolUpper = symbolStr.toUpperCase().trim();
+    const rawInput = symbol.trim();
+    symbol = rawInput.toUpperCase();
     
-    // 1. Try to resolve the symbol if it's not a standard one
-    const isChinese = /[\u4e00-\u9fa5]/.test(symbolUpper);
-    const isNumeric = /^\d{4,6}$/.test(symbolUpper);
-    const isStandard = /^[A-Z0-9]+\.[A-Z]+$/.test(symbolUpper);
+    const isChinese = /[\u4e00-\u9fa5]/.test(symbol);
+    const isNumeric = /^\d{4,6}$/.test(symbol);
+    const isStandard = /^[A-Z0-9]+\.[A-Z]+$/.test(symbol);
 
     if (isChinese || isNumeric || !isStandard) {
       let resolved = false;
-
-      // Try TWSE API for Chinese names or numeric codes
       try {
-        const twseRes = await fetch(`https://www.twse.com.tw/zh/api/codeQuery?query=${encodeURIComponent(symbolUpper)}`);
+        const twseRes = await fetch(`https://www.twse.com.tw/zh/api/codeQuery?query=${encodeURIComponent(symbol)}`);
         if (twseRes.ok) {
           const twseData = await twseRes.json();
           if (twseData && twseData.suggestions && twseData.suggestions[0] !== '(無符合之代碼或名稱)') {
-            // Find exact match or first match
             const match = twseData.suggestions.find((s: string) => {
               const parts = s.split('\t');
-              return parts[1] === symbolUpper || parts[0] === symbolUpper;
+              return parts[1] === symbol || parts[0] === symbol;
             }) || twseData.suggestions[0];
             
             if (match) {
               const code = match.split('\t')[0];
-              symbolUpper = `${code}.TW`;
+              symbol = `${code}.TW`;
               resolved = true;
             }
           }
@@ -214,64 +203,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (!resolved) {
         try {
-          // Try standard search with Taiwan parameters
           let searchResult;
           try {
-            searchResult = await yahooFinance.search(symbolUpper, { 
+            searchResult = await yahooFinance.search(symbol, { 
               lang: 'zh-Hant-TW', 
               region: 'TW',
               quotesCount: 5,
               newsCount: 0
             });
           } catch (e) {
-            // Fallback to simple search if BadRequest occurs
-            searchResult = await yahooFinance.search(symbolUpper, { quotesCount: 5, newsCount: 0 });
+            searchResult = await yahooFinance.search(symbol, { quotesCount: 5, newsCount: 0 });
           }
           
-          if (!searchResult || !searchResult.quotes || searchResult.quotes.length === 0) {
-            // If first search yields nothing, try appending " stock"
-            try {
-              searchResult = await yahooFinance.search(`${symbolUpper} stock`, { quotesCount: 5, newsCount: 0 });
-            } catch (e) {
-              // Ignore search errors in fallback
-            }
-          }
-
           if (searchResult && searchResult.quotes && searchResult.quotes.length > 0) {
             const bestMatch = searchResult.quotes.find(q => 
               q.quoteType === 'EQUITY' && ((q as any).symbol?.endsWith('.TW') || (q as any).symbol?.endsWith('.TWO'))
             ) || searchResult.quotes.find(q => q.quoteType === 'EQUITY') || searchResult.quotes[0];
             
             if ((bestMatch as any).symbol) {
-              symbolUpper = (bestMatch as any).symbol;
+              symbol = (bestMatch as any).symbol;
             }
-          } else if (isNumeric && !symbolUpper.includes('.')) {
-            symbolUpper = `${symbolUpper}.TW`;
+          } else if (isNumeric && !symbol.includes('.')) {
+            symbol = `${symbol}.TW`;
           }
         } catch (searchError) {
-          // If it's a numeric code, we can safely assume it's a Taiwan stock
-          if (isNumeric && !symbolUpper.includes('.')) {
-            symbolUpper = `${symbolUpper}.TW`;
-          } else if (isChinese) {
-            // For Chinese names, if search fails, try one more time with a simpler search
-            try {
-               const fallbackSearch = await yahooFinance.search(symbolUpper, { quotesCount: 5, newsCount: 0 });
-               if (fallbackSearch.quotes && fallbackSearch.quotes.length > 0) {
-                 symbolUpper = (fallbackSearch.quotes[0] as any).symbol;
-               }
-            } catch (e) {
-               // Final fallback
-            }
+          if (isNumeric && !symbol.includes('.')) {
+            symbol = `${symbol}.TW`;
           }
         }
       }
     }
     
-    const validIntervals = ["60m", "1d", "1wk", "1mo"];
+    const validIntervals = ["1m", "5m", "60m", "1d", "1wk", "1mo"];
     const queryInterval = validIntervals.includes(interval) ? interval as any : "1d";
     
     const period1 = new Date();
-    if (queryInterval === "60m") {
+    if (queryInterval === "1m") {
+      period1.setDate(period1.getDate() - 7);
+    } else if (queryInterval === "5m") {
+      period1.setDate(period1.getDate() - 30);
+    } else if (queryInterval === "60m") {
       period1.setMonth(period1.getMonth() - 3);
     } else if (queryInterval === "1d") {
       period1.setMonth(period1.getMonth() - 6);
@@ -284,25 +255,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     period2.setDate(period2.getDate() + 1);
     
     const queryOptions = { period1, period2, interval: queryInterval };
-    const chartResult = await yahooFinance.chart(symbolUpper, queryOptions);
+    
+    let chartResult;
+    try {
+      chartResult = await yahooFinance.chart(symbol, queryOptions);
+    } catch (chartError: any) {
+      if (isNumeric && !symbol.includes('.TW') && !symbol.includes('.TWO')) {
+        try {
+          symbol = `${rawInput.toUpperCase()}.TW`;
+          chartResult = await yahooFinance.chart(symbol, queryOptions);
+        } catch (e) {
+          return res.status(404).json({ error: `找不到該股票資料 (${symbol})` });
+        }
+      } else {
+        return res.status(404).json({ error: `找不到該股票資料 (${symbol})` });
+      }
+    }
+
     const result = chartResult.quotes.filter(
       (q: any) => q.close != null && q.open != null && q.high != null && q.low != null
     );
     
     if (!result || result.length === 0) {
-      return res.status(404).json({ error: "No data found for symbol" });
+      return res.status(404).json({ error: "No data found" });
     }
 
     const enrichedData = calculateIndicators(result, queryInterval, chartResult.meta.exchangeTimezoneName);
+    const latest = enrichedData.length > 0 ? enrichedData[enrichedData.length - 1] : null;
     
-    const quote: any = await yahooFinance.quote(symbolUpper, { lang: "zh-TW", region: "TW" });
+    let quote: any = {};
+    try {
+      quote = await yahooFinance.quote(symbol, { lang: "zh-TW", region: "TW" });
+    } catch (e) {
+      console.error("Quote fetch error:", e);
+    }
 
     const data = {
-      symbol: quote.symbol,
-      shortName: quote.longName || quote.shortName || symbolUpper,
-      regularMarketPrice: quote.regularMarketPrice,
-      regularMarketChange: quote.regularMarketChange,
-      regularMarketChangePercent: quote.regularMarketChangePercent,
+      symbol: quote.symbol || symbol,
+      shortName: quote.longName || quote.shortName || symbol,
+      regularMarketPrice: quote.regularMarketPrice || latest?.close || 0,
+      regularMarketChange: quote.regularMarketChange || (latest && latest.close - (latest.open || latest.close)) || 0,
+      regularMarketChangePercent: quote.regularMarketChangePercent || (latest && latest.open ? (latest.close - latest.open) / latest.open * 100 : 0),
+      regularMarketOpen: quote.regularMarketOpen || latest?.open || 0,
+      regularMarketDayHigh: quote.regularMarketDayHigh || latest?.high || 0,
+      regularMarketDayLow: quote.regularMarketDayLow || latest?.low || 0,
+      regularMarketPreviousClose: quote.regularMarketPreviousClose || (enrichedData.length > 1 ? enrichedData[enrichedData.length - 2].close : latest?.open) || 0,
+      regularMarketVolume: quote.regularMarketVolume || latest?.volume || 0,
+      averageDailyVolume3Month: quote.averageDailyVolume3Month,
+      marketCap: quote.marketCap,
+      trailingPE: quote.trailingPE,
+      dividendYield: quote.dividendYield,
+      bid: quote.bid,
+      ask: quote.ask,
+      bidSize: quote.bidSize,
+      askSize: quote.askSize,
       historical: enrichedData,
     };
     

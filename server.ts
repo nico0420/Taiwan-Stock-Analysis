@@ -110,29 +110,27 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
   return quotes.map((q, i) => {
     const dateObj = new Date(q.date);
     
-    // Use en-GB to get a consistent DD/MM/YYYY, HH:mm:ss format
-    const parts = dateObj.toLocaleString('en-GB', { 
-      timeZone: timezone,
-      hour12: false,
+    // Extremely robust date formatting using Intl.DateTimeFormat formatToParts
+    // This avoids locale-dependent string splitting issues
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone || 'Asia/Taipei',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
-    }).split(/[ ,/:]+/);
+      minute: '2-digit',
+      hour12: false
+    });
     
-    // parts will be [day, month, year, hour, minute]
-    const day = parts[0];
-    const month = parts[1];
-    const year = parts[2];
-    const hour = parts[3];
-    const minute = parts[4];
+    const parts = dtf.formatToParts(dateObj);
+    const p: any = {};
+    parts.forEach(part => p[part.type] = part.value);
     
-    const dateStrBase = `${year}-${month}-${day}`;
+    const dateStrBase = `${p.year}-${p.month}-${p.day}`;
     let dateStr = dateStrBase;
     
     if (interval === "60m" || interval === "1m" || interval === "5m") {
-      dateStr = `${dateStrBase} ${hour}:${minute}`;
+      dateStr = `${dateStrBase} ${p.hour}:${p.minute}`;
     }
 
     let changePercent = null;
@@ -447,17 +445,16 @@ async function createApp() {
   return app;
 }
 
-async function startServer() {
-  const app = await createApp();
-  const PORT = 3000;
+// For Vercel compatibility, we export the app
+const appPromise = createApp();
+export default appPromise;
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// Start server if running directly
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  appPromise.then(app => {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   });
 }
-
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  startServer();
-}
-
-export default createApp;

@@ -46,20 +46,22 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
     let twTime = "";
     
     try {
-      // Use en-GB for consistent parsing
-      const s = now.toLocaleString('en-GB', { 
+      const dtf = new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Taipei',
-        hour12: false,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
-        minute: '2-digit'
-      }).split(/[ ,/:]+/);
+        minute: '2-digit',
+        hour12: false
+      });
       
-      // parts: [day, month, year, hour, minute]
-      twDate = `${s[2]}-${s[1]}-${s[0]}`;
-      twTime = `${s[3]}:${s[4]}`;
+      const parts = dtf.formatToParts(now);
+      const p: any = {};
+      parts.forEach(part => p[part.type] = part.value);
+      
+      twDate = `${p.year}-${p.month}-${p.day}`;
+      twTime = `${p.hour}:${p.minute}`;
     } catch (e) {
       // Fallback
       const iso = now.toISOString().split('T');
@@ -103,7 +105,7 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
       }
     });
 
-    let lastKnownClose = data.regularMarketPreviousClose || (actualData.length > 0 ? actualData[0].close : null);
+    let lastKnownClose = data.regularMarketPreviousClose || (actualData.length > 0 ? actualData[0].close : (data.regularMarketPrice || 0));
 
     for (let h = startHour; h <= endHour; h++) {
       const maxM = (h === endHour) ? endMinute : 59;
@@ -139,19 +141,21 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
   const bgColorClass = isPositive ? 'bg-red-500' : 'bg-green-500';
 
   const turnover = useMemo(() => {
-    const p = Number(data.regularMarketPrice) || 0;
-    const v = Number(data.regularMarketVolume) || 0;
+    const p = parseFloat(String(data.regularMarketPrice));
+    const v = parseFloat(String(data.regularMarketVolume));
+    if (isNaN(p) || isNaN(v)) return "0.00";
     const val = (p * v) / 100000000;
-    return isNaN(val) ? "0.00" : val.toFixed(2);
+    return val.toFixed(2);
   }, [data.regularMarketPrice, data.regularMarketVolume]);
 
   const amplitude = useMemo(() => {
-    const pc = Number(prevClose);
-    if (!pc || pc === 0) return "0.00";
-    const high = Number(data.regularMarketDayHigh || data.regularMarketPrice || 0);
-    const low = Number(data.regularMarketDayLow || data.regularMarketPrice || 0);
+    const pc = parseFloat(String(prevClose));
+    if (!pc || pc === 0 || isNaN(pc)) return "0.00";
+    const high = parseFloat(String(data.regularMarketDayHigh || data.regularMarketPrice || 0));
+    const low = parseFloat(String(data.regularMarketDayLow || data.regularMarketPrice || 0));
+    if (isNaN(high) || isNaN(low)) return "0.00";
     const val = ((high - low) / pc) * 100;
-    return isNaN(val) ? "0.00" : val.toFixed(2);
+    return val.toFixed(2);
   }, [data.regularMarketDayHigh, data.regularMarketDayLow, data.regularMarketPrice, prevClose]);
 
   // Generate bid/ask display
