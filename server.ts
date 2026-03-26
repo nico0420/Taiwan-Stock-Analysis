@@ -111,24 +111,28 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
     // Robust date formatting for different environments
     const dateObj = new Date(q.date);
     
-    // Use a fixed locale 'en-GB' which defaults to 24-hour format
-    const datePart = dateObj.toLocaleDateString('en-CA', {
+    // Manual formatting to avoid Intl inconsistencies in minimal environments
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
     });
     
-    let dateStr = datePart;
+    const parts = formatter.formatToParts(dateObj);
+    const p: any = {};
+    parts.forEach(part => p[part.type] = part.value);
+    
+    // Ensure YYYY-MM-DD format
+    const dateStrBase = `${p.year}-${p.month}-${p.day}`;
+    let dateStr = dateStrBase;
     
     if (interval === "60m" || interval === "1m" || interval === "5m") {
-      const timePart = dateObj.toLocaleTimeString('en-GB', {
-        timeZone: timezone,
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-      dateStr = `${datePart} ${timePart}`;
+      // Ensure HH:mm format exactly
+      dateStr = `${dateStrBase} ${p.hour}:${p.minute}`;
     }
 
     let changePercent = null;
@@ -390,20 +394,26 @@ async function createApp() {
       }
 
       const enrichedData = calculateIndicators(result, queryInterval, chartResult.meta.exchangeTimezoneName);
+      const latest = enrichedData.length > 0 ? enrichedData[enrichedData.length - 1] : null;
       
-      const quote: any = await yahooFinance.quote(symbol, { lang: "zh-TW", region: "TW" });
+      let quote: any = {};
+      try {
+        quote = await yahooFinance.quote(symbol, { lang: "zh-TW", region: "TW" });
+      } catch (e) {
+        console.error("Quote fetch error:", e);
+      }
 
       res.json({
-        symbol: quote.symbol,
+        symbol: quote.symbol || symbol,
         shortName: quote.longName || quote.shortName || symbol,
-        regularMarketPrice: quote.regularMarketPrice,
-        regularMarketChange: quote.regularMarketChange,
-        regularMarketChangePercent: quote.regularMarketChangePercent,
-        regularMarketOpen: quote.regularMarketOpen,
-        regularMarketDayHigh: quote.regularMarketDayHigh,
-        regularMarketDayLow: quote.regularMarketDayLow,
-        regularMarketPreviousClose: quote.regularMarketPreviousClose,
-        regularMarketVolume: quote.regularMarketVolume,
+        regularMarketPrice: quote.regularMarketPrice || latest?.close || 0,
+        regularMarketChange: quote.regularMarketChange || (latest && latest.close - (latest.open || latest.close)) || 0,
+        regularMarketChangePercent: quote.regularMarketChangePercent || (latest && latest.open ? (latest.close - latest.open) / latest.open * 100 : 0),
+        regularMarketOpen: quote.regularMarketOpen || latest?.open || 0,
+        regularMarketDayHigh: quote.regularMarketDayHigh || latest?.high || 0,
+        regularMarketDayLow: quote.regularMarketDayLow || latest?.low || 0,
+        regularMarketPreviousClose: quote.regularMarketPreviousClose || (enrichedData.length > 1 ? enrichedData[enrichedData.length - 2].close : latest?.open) || 0,
+        regularMarketVolume: quote.regularMarketVolume || latest?.volume || 0,
         averageDailyVolume3Month: quote.averageDailyVolume3Month,
         marketCap: quote.marketCap,
         trailingPE: quote.trailingPE,

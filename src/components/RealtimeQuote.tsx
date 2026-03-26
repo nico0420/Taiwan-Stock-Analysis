@@ -42,21 +42,31 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
     
     // Get current Taiwan time to know where to stop the line if market is open
     const now = new Date();
-    const twFormatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Taipei',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
+    let twDate = "";
+    let twTime = "";
     
-    const parts = twFormatter.formatToParts(now);
-    const getPart = (type: string) => parts.find(p => p.type === type)?.value || "";
-    
-    const twDate = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
-    const twTime = `${getPart('hour')}:${getPart('minute')}`;
+    try {
+      const twFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      const parts = twFormatter.formatToParts(now);
+      const getPart = (type: string) => parts.find(p => p.type === type)?.value || "";
+      
+      twDate = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+      twTime = `${getPart('hour')}:${getPart('minute')}`;
+    } catch (e) {
+      // Fallback
+      const iso = now.toISOString().split('T');
+      twDate = iso[0];
+      twTime = iso[1].slice(0, 5);
+    }
 
     const isToday = lastDate === twDate;
     const lastActualTime = actualData.length > 0 
@@ -87,8 +97,11 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
     // Create a map for faster lookup
     const dataMap = new Map();
     actualData.forEach((d: any) => {
-      const timePart = d.date.split(' ')[1];
-      dataMap.set(timePart, d);
+      // Ensure we only take HH:mm even if the backend sends HH:mm:ss
+      const timePart = d.date.split(' ')[1]?.slice(0, 5);
+      if (timePart) {
+        dataMap.set(timePart, d);
+      }
     });
 
     let lastKnownClose = data.regularMarketPreviousClose || (actualData.length > 0 ? actualData[0].close : null);
