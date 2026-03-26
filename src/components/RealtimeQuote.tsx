@@ -126,8 +126,18 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
   const colorClass = isPositive ? 'text-red-500' : 'text-green-500';
   const bgColorClass = isPositive ? 'bg-red-500' : 'bg-green-500';
 
-  const turnover = (data.regularMarketPrice * data.regularMarketVolume / 100000000).toFixed(2);
-  const amplitude = (((data.regularMarketDayHigh - data.regularMarketDayLow) / prevClose) * 100).toFixed(2);
+  const turnover = useMemo(() => {
+    const val = (data.regularMarketPrice || 0) * (data.regularMarketVolume || 0) / 100000000;
+    return isNaN(val) ? "0.00" : val.toFixed(2);
+  }, [data.regularMarketPrice, data.regularMarketVolume]);
+
+  const amplitude = useMemo(() => {
+    if (!prevClose || prevClose === 0) return "0.00";
+    const high = data.regularMarketDayHigh || data.regularMarketPrice || 0;
+    const low = data.regularMarketDayLow || data.regularMarketPrice || 0;
+    const val = ((high - low) / prevClose) * 100;
+    return isNaN(val) ? "0.00" : val.toFixed(2);
+  }, [data.regularMarketDayHigh, data.regularMarketDayLow, data.regularMarketPrice, prevClose]);
 
   // Generate bid/ask display
   const bidLevels = useMemo(() => {
@@ -203,15 +213,15 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
             <div className="grid grid-cols-3 gap-4 border-l border-zinc-800/50 pl-6">
               <div className="space-y-1">
                 <p className="text-zinc-600 text-[10px] font-bold uppercase">High</p>
-                <p className="text-red-400 font-mono font-bold">{data.regularMarketDayHigh?.toFixed(2)}</p>
+                <p className="text-red-400 font-mono font-bold">{(data.regularMarketDayHigh || data.regularMarketPrice || 0).toFixed(2)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-zinc-600 text-[10px] font-bold uppercase">Low</p>
-                <p className="text-green-400 font-mono font-bold">{data.regularMarketDayLow?.toFixed(2)}</p>
+                <p className="text-green-400 font-mono font-bold">{(data.regularMarketDayLow || data.regularMarketPrice || 0).toFixed(2)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-zinc-600 text-[10px] font-bold uppercase">Open</p>
-                <p className="text-zinc-300 font-mono font-bold">{data.regularMarketOpen?.toFixed(2)}</p>
+                <p className="text-zinc-300 font-mono font-bold">{(data.regularMarketOpen || data.regularMarketPrice || 0).toFixed(2)}</p>
               </div>
             </div>
           </div>

@@ -108,33 +108,27 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
   });
 
   return quotes.map((q, i) => {
-    const options: Intl.DateTimeFormatOptions = {
+    // Robust date formatting for different environments
+    const dateObj = new Date(q.date);
+    
+    // Use a fixed locale 'en-GB' which defaults to 24-hour format
+    const datePart = dateObj.toLocaleDateString('en-CA', {
       timeZone: timezone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    };
+    });
+    
+    let dateStr = datePart;
+    
     if (interval === "60m" || interval === "1m" || interval === "5m") {
-      options.hour = '2-digit';
-      options.minute = '2-digit';
-      options.hour12 = false;
-    }
-    
-    const formatter = new Intl.DateTimeFormat('en-CA', options);
-    const parts = formatter.formatToParts(q.date);
-    
-    let year, month, day, hour, minute;
-    for (const part of parts) {
-      if (part.type === 'year') year = part.value;
-      if (part.type === 'month') month = part.value;
-      if (part.type === 'day') day = part.value;
-      if (part.type === 'hour') hour = part.value;
-      if (part.type === 'minute') minute = part.value;
-    }
-    
-    let dateStr = `${year}-${month}-${day}`;
-    if (interval === "60m" || interval === "1m" || interval === "5m") {
-      dateStr = `${dateStr} ${hour}:${minute}`;
+      const timePart = dateObj.toLocaleTimeString('en-GB', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      dateStr = `${datePart} ${timePart}`;
     }
 
     let changePercent = null;
