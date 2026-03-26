@@ -108,31 +108,31 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
   });
 
   return quotes.map((q, i) => {
-    // Robust date formatting for different environments
     const dateObj = new Date(q.date);
     
-    // Manual formatting to avoid Intl inconsistencies in minimal environments
-    const formatter = new Intl.DateTimeFormat('en-US', {
+    // Use en-GB to get a consistent DD/MM/YYYY, HH:mm:ss format
+    const parts = dateObj.toLocaleString('en-GB', { 
       timeZone: timezone,
+      hour12: false,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
+      minute: '2-digit'
+    }).split(/[ ,/:]+/);
     
-    const parts = formatter.formatToParts(dateObj);
-    const p: any = {};
-    parts.forEach(part => p[part.type] = part.value);
+    // parts will be [day, month, year, hour, minute]
+    const day = parts[0];
+    const month = parts[1];
+    const year = parts[2];
+    const hour = parts[3];
+    const minute = parts[4];
     
-    // Ensure YYYY-MM-DD format
-    const dateStrBase = `${p.year}-${p.month}-${p.day}`;
+    const dateStrBase = `${year}-${month}-${day}`;
     let dateStr = dateStrBase;
     
     if (interval === "60m" || interval === "1m" || interval === "5m") {
-      // Ensure HH:mm format exactly
-      dateStr = `${dateStrBase} ${p.hour}:${p.minute}`;
+      dateStr = `${dateStrBase} ${hour}:${minute}`;
     }
 
     let changePercent = null;

@@ -46,21 +46,20 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
     let twTime = "";
     
     try {
-      const twFormatter = new Intl.DateTimeFormat('en-US', {
+      // Use en-GB for consistent parsing
+      const s = now.toLocaleString('en-GB', { 
         timeZone: 'Asia/Taipei',
+        hour12: false,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
+        minute: '2-digit'
+      }).split(/[ ,/:]+/);
       
-      const parts = twFormatter.formatToParts(now);
-      const getPart = (type: string) => parts.find(p => p.type === type)?.value || "";
-      
-      twDate = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
-      twTime = `${getPart('hour')}:${getPart('minute')}`;
+      // parts: [day, month, year, hour, minute]
+      twDate = `${s[2]}-${s[1]}-${s[0]}`;
+      twTime = `${s[3]}:${s[4]}`;
     } catch (e) {
       // Fallback
       const iso = now.toISOString().split('T');
@@ -140,15 +139,18 @@ const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
   const bgColorClass = isPositive ? 'bg-red-500' : 'bg-green-500';
 
   const turnover = useMemo(() => {
-    const val = (data.regularMarketPrice || 0) * (data.regularMarketVolume || 0) / 100000000;
+    const p = Number(data.regularMarketPrice) || 0;
+    const v = Number(data.regularMarketVolume) || 0;
+    const val = (p * v) / 100000000;
     return isNaN(val) ? "0.00" : val.toFixed(2);
   }, [data.regularMarketPrice, data.regularMarketVolume]);
 
   const amplitude = useMemo(() => {
-    if (!prevClose || prevClose === 0) return "0.00";
-    const high = data.regularMarketDayHigh || data.regularMarketPrice || 0;
-    const low = data.regularMarketDayLow || data.regularMarketPrice || 0;
-    const val = ((high - low) / prevClose) * 100;
+    const pc = Number(prevClose);
+    if (!pc || pc === 0) return "0.00";
+    const high = Number(data.regularMarketDayHigh || data.regularMarketPrice || 0);
+    const low = Number(data.regularMarketDayLow || data.regularMarketPrice || 0);
+    const val = ((high - low) / pc) * 100;
     return isNaN(val) ? "0.00" : val.toFixed(2);
   }, [data.regularMarketDayHigh, data.regularMarketDayLow, data.regularMarketPrice, prevClose]);
 
