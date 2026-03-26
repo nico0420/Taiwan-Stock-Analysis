@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ComposedChart,
   Line,
@@ -12,9 +12,8 @@ import {
   Cell,
   BarChart,
   LineChart,
-  Brush,
 } from "recharts";
-import { Search, Loader2, Star, Trash2, PlusCircle, X, Bookmark, Menu } from "lucide-react";
+import { Search, Loader2, Star, Trash2, PlusCircle, X, Bookmark, Menu, MousePointer2, Maximize2 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { StockHeader } from "./StockHeader";
 import { StockChart } from "./StockChart";
@@ -34,7 +33,211 @@ export default function StockDashboard() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [watchlist, setWatchlist] = useState<{symbol: string, name: string}[]>([]);
   const [showWatchlist, setShowWatchlist] = useState(false);
+  const [zoomRange, setZoomRange] = useState<{start: number, end: number} | null>(null);
+  const [isWheelZoomEnabled, setIsWheelZoomEnabled] = useState(false);
   const cache = useRef(new Map<string, any>());
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const zoomRangeRef = useRef<{start: number, end: number} | null>(null);
+  const isPanning = useRef(false);
+  const startX = useRef(0);
+  const startDist = useRef(0);
+
+  // Keep zoomRangeRef in sync with zoomRange state
+  useEffect(() => {
+    zoomRangeRef.current = zoomRange;
+  }, [zoomRange]);
+
+  // Handle wheel zoom and panning
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!isWheelZoomEnabled || !data || !data.historical || data.historical.length === 0) return;
+      
+      // Prevent default page scroll
+      e.preventDefault();
+
+      const totalLen = data.historical.length;
+      
+      setZoomRange(prev => {
+        let currentStart = prev ? prev.start : 0;
+        let currentEnd = prev ? prev.end : totalLen - 1;
+        const currentRange = currentEnd - currentStart;
+        
+        // Zoom factor: 10% of current range
+        const zoomFactor = Math.max(1, Math.floor(currentRange * 0.1));
+        
+        if (e.deltaY > 0) {
+          // Zoom out
+          currentStart = Math.max(0, currentStart - zoomFactor);
+          currentEnd = Math.min(totalLen - 1, currentEnd + zoomFactor);
+        } else {
+          // Zoom in
+          if (currentRange > 10) {
+            currentStart = Math.min(currentEnd - 10, currentStart + zoomFactor);
+            currentEnd = Math.max(currentStart + 10, currentEnd - zoomFactor);
+          }
+        }
+        
+        if (currentStart <= 0 && currentEnd >= totalLen - 1) return null;
+        return { start: Math.floor(currentStart), end: Math.floor(currentEnd) };
+      });
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!data || !data.historical) return;
+      isPanning.current = true;
+      startX.current = e.clientX;
+      container.style.cursor = 'grabbing';
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (!data || !data.historical) return;
+      if (e.touches.length === 1) {
+        isPanning.current = true;
+        startX.current = e.touches[0].clientX;
+      } else if (e.touches.length === 2) {
+        isPanning.current = false;
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        startDist.current = dist;
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPanning.current || !data || !data.historical || data.historical.length === 0) return;
+      
+      const containerWidth = container.clientWidth;
+      if (containerWidth <= 0) return;
+
+      const deltaX = e.clientX - startX.current;
+      const totalLen = data.historical.length;
+      const currentZoom = zoomRangeRef.current;
+      const currentRange = currentZoom ? (currentZoom.end - currentZoom.start) : totalLen - 1;
+      const sensitivity = currentRange / containerWidth;
+      const shift = Math.round(-deltaX * sensitivity);
+      
+      if (shift === 0) return;
+      startX.current = e.clientX;
+      
+      setZoomRange(prev => {
+        const current = prev || { start: 0, end: totalLen - 1 };
+        let newStart = current.start + shift;
+        let newEnd = current.end + shift;
+        const rangeSize = current.end - current.start;
+        
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = rangeSize;
+        } else if (newEnd >= totalLen) {
+          newEnd = totalLen - 1;
+          newStart = newEnd - rangeSize;
+        }
+        
+        if (isNaN(newStart) || isNaN(newEnd)) return prev;
+        
+        return { start: Math.floor(newStart), end: Math.floor(newEnd) };
+      });
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!data || !data.historical || data.historical.length === 0) return;
+      
+      const containerWidth = container.clientWidth;
+      if (containerWidth <= 0) return;
+
+      // Prevent page scroll during chart interaction
+      e.preventDefault();
+
+      if (e.touches.length === 1 && isPanning.current) {
+        const deltaX = e.touches[0].clientX - startX.current;
+        const totalLen = data.historical.length;
+        const currentZoom = zoomRangeRef.current;
+        const currentRange = currentZoom ? (currentZoom.end - currentZoom.start) : totalLen - 1;
+        const sensitivity = currentRange / containerWidth;
+        const shift = Math.round(-deltaX * sensitivity);
+        
+        if (shift !== 0) {
+          startX.current = e.touches[0].clientX;
+          setZoomRange(prev => {
+            const current = prev || { start: 0, end: totalLen - 1 };
+            let newStart = current.start + shift;
+            let newEnd = current.end + shift;
+            const rangeSize = current.end - current.start;
+            if (newStart < 0) { newStart = 0; newEnd = rangeSize; }
+            else if (newEnd >= totalLen) { newEnd = totalLen - 1; newStart = newEnd - rangeSize; }
+            
+            if (isNaN(newStart) || isNaN(newEnd)) return prev;
+            return { start: Math.floor(newStart), end: Math.floor(newEnd) };
+          });
+        }
+      } else if (e.touches.length === 2) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const deltaDist = dist - startDist.current;
+        if (Math.abs(deltaDist) > 5) {
+          const totalLen = data.historical.length;
+          setZoomRange(prev => {
+            const current = prev || { start: 0, end: totalLen - 1 };
+            const range = current.end - current.start;
+            const zoomAmount = Math.max(1, Math.floor(range * 0.05));
+            let newStart = current.start;
+            let newEnd = current.end;
+            
+            if (deltaDist > 0) {
+              newStart = Math.min(newEnd - 10, newStart + zoomAmount);
+              newEnd = Math.max(newStart + 10, newEnd - zoomAmount);
+            } else {
+              newStart = Math.max(0, newStart - zoomAmount);
+              newEnd = Math.min(totalLen - 1, newEnd + zoomAmount);
+            }
+            if (isNaN(newStart) || isNaN(newEnd)) return prev;
+            return { start: Math.floor(newStart), end: Math.floor(newEnd) };
+          });
+          startDist.current = dist;
+        }
+      }
+    };
+
+    const handleEnd = () => {
+      isPanning.current = false;
+      container.style.cursor = 'crosshair';
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleEnd);
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleEnd);
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleEnd);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleEnd);
+    };
+  }, [data, isWheelZoomEnabled]);
+
+  const applyZoomPreset = (bars: number) => {
+    if (!data || !data.historical || data.historical.length === 0) return;
+    const total = data.historical.length;
+    if (bars >= total) {
+      setZoomRange(null);
+    } else {
+      const actualBars = Math.max(10, bars);
+      setZoomRange({ start: Math.max(0, total - actualBars), end: total - 1 });
+    }
+  };
 
   // Load watchlist from localStorage
   useEffect(() => {
@@ -111,6 +314,7 @@ export default function StockDashboard() {
     if (cache.current.has(cacheKey)) {
       setData(cache.current.get(cacheKey));
       setHoveredIndex(null);
+      setZoomRange(null);
       setLoading(false);
       return;
     }
@@ -147,6 +351,7 @@ export default function StockDashboard() {
       
       setData(result);
       setHoveredIndex(null);
+      setZoomRange(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -196,7 +401,11 @@ export default function StockDashboard() {
         setHoveredIndex(absoluteIndex);
       }
     } else if (e && e.activeTooltipIndex != null) {
-      setHoveredIndex(e.activeTooltipIndex);
+      // If we are zoomed, activeTooltipIndex is relative to the sliced array.
+      // We need to map it back to the absolute index.
+      const relativeIndex = e.activeTooltipIndex;
+      const absoluteIndex = zoomRange ? zoomRange.start + relativeIndex : relativeIndex;
+      setHoveredIndex(absoluteIndex);
     }
   };
 
@@ -204,7 +413,32 @@ export default function StockDashboard() {
     setHoveredIndex(null);
   };
 
-  const displayIndex = hoveredIndex !== null ? hoveredIndex : (data?.historical ? data.historical.length - 1 : 0);
+  // Safely slice historical data based on zoomRange
+  const processedHistorical = useMemo(() => {
+    if (!data?.historical || data.historical.length === 0) return [];
+    if (!zoomRange) return data.historical;
+    
+    const { start, end } = zoomRange;
+    const totalLen = data.historical.length;
+    
+    // Safety checks for invalid indices or NaN
+    if (isNaN(start) || isNaN(end) || start < 0 || end >= totalLen || start > end) {
+      return data.historical;
+    }
+    
+    const sliced = data.historical.slice(start, end + 1);
+    // Ensure we always have at least 2 points to render a chart
+    return sliced.length > 0 ? sliced : data.historical;
+  }, [data?.historical, zoomRange]);
+
+  const displayIndex = useMemo(() => {
+    if (!data?.historical || data.historical.length === 0) return 0;
+    if (hoveredIndex !== null) {
+      return Math.max(0, Math.min(hoveredIndex, data.historical.length - 1));
+    }
+    return data.historical.length - 1;
+  }, [data?.historical, hoveredIndex]);
+
   const displayData = data?.historical ? data.historical[displayIndex] : null;
   const prevData = data?.historical && displayIndex > 0 ? data.historical[displayIndex - 1] : null;
 
@@ -379,31 +613,88 @@ export default function StockDashboard() {
                 </div>
 
                 {/* Charts Area */}
-                <div className="space-y-4">
-                  <StockChart
-                    data={data}
-                    activeMAs={activeMAs}
-                    setActiveMAs={setActiveMAs}
-                    maColors={maColors}
-                    displayData={displayData}
-                    prevData={prevData}
-                    handleMouseMove={handleMouseMove}
-                    handleMouseLeave={handleMouseLeave}
-                  />
-                  <IndicatorChart
-                    type="volume"
-                    data={data}
-                    displayData={displayData}
-                    handleMouseMove={handleMouseMove}
-                    handleMouseLeave={handleMouseLeave}
-                  />
-                  <IndicatorChart
-                    type="kdj"
-                    data={data}
-                    displayData={displayData}
-                    handleMouseMove={handleMouseMove}
-                    handleMouseLeave={handleMouseLeave}
-                  />
+                <div className="space-y-4 relative group" ref={chartContainerRef}>
+                  {/* Zoom Controls Overlay */}
+                  <div className="absolute top-4 right-4 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-lg p-1 flex flex-col gap-1 shadow-2xl">
+                      <button 
+                        onClick={() => setIsWheelZoomEnabled(!isWheelZoomEnabled)}
+                        className={cn(
+                          "p-2 rounded-md transition-all",
+                          isWheelZoomEnabled ? "bg-blue-500 text-white" : "text-zinc-400 hover:bg-zinc-800"
+                        )}
+                        title={isWheelZoomEnabled ? "關閉滾輪縮放" : "開啟滾輪縮放"}
+                      >
+                        <MousePointer2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => setZoomRange(null)}
+                        className="p-2 text-zinc-400 hover:bg-zinc-800 rounded-md transition-all"
+                        title="重設縮放"
+                      >
+                        <Maximize2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 touch-none">
+                    <StockChart
+                      data={{ ...data, historical: processedHistorical }}
+                      activeMAs={activeMAs}
+                      setActiveMAs={setActiveMAs}
+                      maColors={maColors}
+                      displayData={displayData}
+                      prevData={prevData}
+                      handleMouseMove={handleMouseMove}
+                      handleMouseLeave={handleMouseLeave}
+                    />
+                    <IndicatorChart
+                      type="volume"
+                      data={{ ...data, historical: processedHistorical }}
+                      displayData={displayData}
+                      handleMouseMove={handleMouseMove}
+                      handleMouseLeave={handleMouseLeave}
+                    />
+                    <IndicatorChart
+                      type="kdj"
+                      data={{ ...data, historical: processedHistorical }}
+                      displayData={displayData}
+                      handleMouseMove={handleMouseMove}
+                      handleMouseLeave={handleMouseLeave}
+                    />
+                  </div>
+
+                  {/* Range Selector Bar */}
+                  <div className="flex items-center justify-between gap-4 px-2">
+                    <div className="flex items-center gap-1 bg-zinc-900/50 p-1 rounded-lg border border-zinc-800">
+                      {[
+                        { label: '1M', bars: 20 },
+                        { label: '3M', bars: 60 },
+                        { label: '6M', bars: 120 },
+                        { label: '1Y', bars: 240 },
+                        { label: 'ALL', bars: 9999 }
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          onClick={() => applyZoomPreset(preset.bars)}
+                          className="px-3 py-1 text-[10px] font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-all uppercase tracking-tighter"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    <div className="hidden sm:flex items-center gap-4 text-[10px] text-zinc-500 font-mono">
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50" />
+                        <span>拖曳平移</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-500/50" />
+                        <span>雙指縮放</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

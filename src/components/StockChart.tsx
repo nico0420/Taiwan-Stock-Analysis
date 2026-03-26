@@ -1,13 +1,57 @@
 import React from 'react';
-import { ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis, Tooltip, Line, Bar, Brush, LineChart } from 'recharts';
+import { ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis, Tooltip, Line, Bar } from 'recharts';
 import { CustomTooltip, formatNumber, getIndicatorTrend } from './StockTooltips';
 import { cn } from '../lib/utils';
+
+const CustomCursor = (props: any) => {
+  const { x, y, width, height, stroke, strokeWidth, strokeDasharray, points } = props;
+  
+  // Ensure safe number values to prevent NaN errors
+  const safeX = typeof x === 'number' && !isNaN(x) ? x : 0;
+  const safeY = typeof y === 'number' && !isNaN(y) ? y : 0;
+  const safeWidth = typeof width === 'number' && !isNaN(width) ? width : 0;
+  const safeHeight = typeof height === 'number' && !isNaN(height) ? height : 1000;
+
+  // When using Brush, the band width calculation can become inaccurate for the cursor.
+  // However, the 'points' array provided to the cursor by Recharts contains the exact 
+  // coordinates of the active data points. We should always prefer the x-coordinate 
+  // from the points array to ensure perfect alignment with the line dots.
+  let cx = safeX;
+  if (points && points.length > 0) {
+    // Find a valid point from the payload (usually a Line point which is centered)
+    const validPoint = points.find((p: any) => p && typeof p.x === 'number' && !isNaN(p.x));
+    if (validPoint) {
+      cx = validPoint.x;
+    } else if (safeWidth > 0) {
+      cx = safeX + safeWidth / 2;
+    }
+  } else if (safeWidth > 0) {
+    cx = safeX + safeWidth / 2;
+  }
+
+  // The cursor should span the entire height of the chart area.
+  const cy1 = safeY;
+  const cy2 = safeY + safeHeight;
+
+  return (
+    <line 
+      x1={cx} 
+      y1={cy1} 
+      x2={cx} 
+      y2={cy2} 
+      stroke={stroke || '#3b82f6'} 
+      strokeWidth={strokeWidth || 1} 
+      strokeDasharray={strokeDasharray || '3 3'} 
+    />
+  );
+};
 
 const Candlestick = (props: any) => {
   const { x, y, width, height, payload } = props;
   const { open, close, high, low } = payload;
 
   if (open == null || close == null || high == null || low == null) return null;
+  if (typeof x !== 'number' || isNaN(x) || typeof y !== 'number' || isNaN(y) || typeof width !== 'number' || isNaN(width) || typeof height !== 'number' || isNaN(height)) return null;
 
   const isUp = close > open;
   const color = isUp ? "#f87171" : "#4ade80";
@@ -124,6 +168,7 @@ export const StockChart = ({
               <YAxis 
                 domain={["auto", "auto"]} 
                 orientation="right" 
+                width={60}
                 stroke="#52525b" 
                 fontSize={10} 
                 tickFormatter={(val) => val?.toFixed(0) ?? ""} 
@@ -131,7 +176,7 @@ export const StockChart = ({
               />
               <Tooltip 
                 content={<CustomTooltip />}
-                cursor={{ stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '3 3' }}
+                cursor={<CustomCursor stroke="#3b82f6" strokeWidth={1} strokeDasharray="3 3" />}
               />
               
               {activeMAs.bollinger && (
@@ -148,25 +193,6 @@ export const StockChart = ({
               {activeMAs.ma60 && <Line type="monotone" dataKey="ma60" stroke={maColors.ma60} strokeWidth={1.2} dot={false} isAnimationActive={false} />}
               
               <Bar dataKey="candle" shape={<Candlestick />} isAnimationActive={false} />
-
-              {data && data.historical && (
-                <Brush 
-                  key={data.historical.length}
-                  dataKey="date" 
-                  height={35} 
-                  stroke="#71717a" 
-                  fill="#18181b"
-                  travellerWidth={20}
-                  gap={5}
-                  startIndex={0}
-                  endIndex={data.historical.length - 1}
-                  className="cursor-pointer"
-                >
-                  <LineChart>
-                    <Line type="monotone" dataKey="close" stroke="#60a5fa" dot={false} isAnimationActive={false} />
-                  </LineChart>
-                </Brush>
-              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
