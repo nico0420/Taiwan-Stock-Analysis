@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   XAxis,
@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { formatNumber } from './StockTooltips';
 import { cn } from '../lib/utils';
+import { Activity, ArrowUp, ArrowDown, Clock, Info } from 'lucide-react';
 
 interface RealtimeQuoteProps {
   data: any;
@@ -22,209 +23,383 @@ interface RealtimeQuoteProps {
 
 const RealtimeQuote: React.FC<RealtimeQuoteProps> = ({ data, symbol }) => {
   const historical = data.historical || [];
+  const [pulse, setPulse] = useState(false);
+
+  // Trigger pulse effect when price changes
+  useEffect(() => {
+    setPulse(true);
+    const timer = setTimeout(() => setPulse(false), 1000);
+    return () => clearTimeout(timer);
+  }, [data.regularMarketPrice]);
   
-  // Filter for today's data (or the last day in the dataset)
+  // Filter for today's data and pad to full trading hours (09:00 - 13:30)
   const intradayData = useMemo(() => {
     if (historical.length === 0) return [];
-    const lastDate = historical[historical.length - 1].date.split(' ')[0];
-    return historical.filter((d: any) => d.date.startsWith(lastDate));
-  }, [historical]);
+    
+    const lastPoint = historical[historical.length - 1];
+    const lastDate = lastPoint.date.split(' ')[0];
+    const actualData = historical.filter((d: any) => d.date.startsWith(lastDate));
+    
+    // Get current Taiwan time to know where to stop the line if market is open
+    const now = new Date();
+    const twFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const parts = twFormatter.formatToParts(now);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || "";
+    
+    const twDate = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+    const twTime = `${getPart('hour')}:${getPart('minute')}`;
+
+    const isToday = lastDate === twDate;
+    const lastActualTime = actualData.length > 0 
+      ? actualData[actualData.length - 1].date.split(' ')[1] 
+      : "09:00";
+
+    // If it's today, we draw up to current time (max 13:30). If it's a past day, we draw to 13:30.
+    let endOfLineTime = "13:30";
+    if (isToday) {
+      if (twTime < "09:00") {
+        endOfLineTime = "09:00";
+      } else if (twTime < "13:30") {
+        endOfLineTime = twTime;
+      }
+    }
+    
+    // Always ensure we at least draw up to the last data point we actually have
+    if (lastActualTime > endOfLineTime) {
+      endOfLineTime = lastActualTime;
+    }
+
+    // Generate full timeline 09:00 to 13:30 (Taiwan Market Hours)
+    const fullTimeline = [];
+    const startHour = 9;
+    const endHour = 13;
+    const endMinute = 30;
+    
+    // Create a map for faster lookup
+    const dataMap = new Map();
+    actualData.forEach((d: any) => {
+      const timePart = d.date.split(' ')[1];
+      dataMap.set(timePart, d);
+    });
+
+    let lastKnownClose = data.regularMarketPreviousClose || (actualData.length > 0 ? actualData[0].close : null);
+
+    for (let h = startHour; h <= endHour; h++) {
+      const maxM = (h === endHour) ? endMinute : 59;
+      for (let m = 0; m <= maxM; m++) {
+        const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        const fullDateStr = `${lastDate} ${timeStr}`;
+        
+        if (dataMap.has(timeStr)) {
+          const d = dataMap.get(timeStr);
+          fullTimeline.push(d);
+          lastKnownClose = d.close;
+        } else {
+          // Carry forward the price if this time is before or at the "end of line"
+          const shouldHavePrice = timeStr <= endOfLineTime;
+          
+          fullTimeline.push({
+            date: fullDateStr,
+            close: shouldHavePrice ? lastKnownClose : null,
+            volume: 0,
+            isPlaceholder: true
+          });
+        }
+      }
+    }
+    return fullTimeline;
+  }, [historical, data.regularMarketPreviousClose]);
 
   const latest = historical[historical.length - 1] || {};
   const prevClose = data.regularMarketPreviousClose || (historical.length > 1 ? historical[historical.length - 2].close : latest.close);
   
   const isPositive = data.regularMarketChange >= 0;
-  const colorClass = isPositive ? 'text-red-400' : 'text-green-400';
-  const bgColorClass = isPositive ? 'bg-red-400' : 'bg-green-400';
+  const colorClass = isPositive ? 'text-red-500' : 'text-green-500';
+  const bgColorClass = isPositive ? 'bg-red-500' : 'bg-green-500';
 
-  // Calculate some derived metrics for the summary table
   const turnover = (data.regularMarketPrice * data.regularMarketVolume / 100000000).toFixed(2);
   const amplitude = (((data.regularMarketDayHigh - data.regularMarketDayLow) / prevClose) * 100).toFixed(2);
 
+  // Generate bid/ask display
+  const bidLevels = useMemo(() => {
+    if (data.bid && data.bidSize) {
+      return [{ price: data.bid, size: data.bidSize }];
+    }
+    return [];
+  }, [data.bid, data.bidSize]);
+
+  const askLevels = useMemo(() => {
+    if (data.ask && data.askSize) {
+      return [{ price: data.ask, size: data.askSize }];
+    }
+    return [];
+  }, [data.ask, data.askSize]);
+
   return (
-    <div className="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 backdrop-blur-md animate-in fade-in duration-500">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-white tracking-tight">{data.shortName} 即時行情</h2>
-          <span className="px-2 py-0.5 bg-zinc-800 text-zinc-500 rounded text-[10px] font-mono uppercase">Live</span>
+    <div className="bg-zinc-900/80 p-4 sm:p-8 rounded-3xl border border-zinc-800 shadow-2xl backdrop-blur-xl">
+      {/* Top Bar: Status & Time */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div className={cn(
+              "absolute -inset-1 rounded-full blur opacity-20 transition-all duration-1000",
+              pulse ? "bg-blue-500 scale-150" : "bg-transparent scale-100"
+            )}></div>
+            <div className="relative flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-full border border-zinc-800">
+              <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+              <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Delayed Data</span>
+            </div>
+          </div>
+          <h2 className="text-2xl font-black text-white tracking-tight uppercase italic">
+            {data.shortName} <span className="text-zinc-600 font-normal not-italic ml-1">{symbol}</span>
+          </h2>
         </div>
-        <span className="text-[10px] text-zinc-500 font-mono">資料時間：{latest.date}</span>
+        <div className="flex items-center gap-6 text-[10px] font-mono text-zinc-500">
+          <div className="flex items-center gap-2">
+            <Clock size={12} className="text-zinc-700" />
+            <span>最後更新: {latest.date}</span>
+          </div>
+          <div className="flex items-center gap-2 bg-zinc-800/50 px-2 py-1 rounded border border-zinc-700/50">
+            <Activity size={12} className="text-orange-500" />
+            <span className="text-orange-400 font-bold">台股延遲約 20 分鐘</span>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left: Intraday Chart */}
-        <div className="lg:col-span-2 h-[400px] flex flex-col bg-zinc-950/50 rounded-xl p-4 border border-zinc-800/50">
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={intradayData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
-                <XAxis 
-                  dataKey="date" 
-                  hide={true}
-                />
-                <YAxis 
-                  domain={['auto', 'auto']} 
-                  orientation="right"
-                  tick={{ fontSize: 10, fill: '#71717a', fontFamily: 'monospace' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip 
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const d = payload[0].payload;
-                      return (
-                        <div className="bg-zinc-900 border border-zinc-800 p-3 shadow-2xl rounded-lg text-[10px]">
-                          <p className="font-bold text-zinc-400 mb-1">{d.date}</p>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-zinc-500">價格:</span>
-                            <span className="font-mono text-white">{d.close.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between gap-4">
-                            <span className="text-zinc-500">成交量:</span>
-                            <span className="font-mono text-white">{formatNumber(d.volume)}</span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <ReferenceLine y={prevClose} stroke="#52525b" strokeDasharray="3 3" />
-                <Area 
-                  type="monotone" 
-                  dataKey="close" 
-                  stroke="#3b82f6" 
-                  fillOpacity={1} 
-                  fill="url(#colorPrice)" 
-                  strokeWidth={2}
-                  isAnimationActive={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="h-20 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={intradayData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                <XAxis dataKey="date" hide={true} />
-                <Bar dataKey="volume" isAnimationActive={false}>
-                  {intradayData.map((entry: any, index: number) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={index > 0 ? (entry.close >= intradayData[index-1].close ? '#ef4444' : '#22c55e') : '#ef4444'} 
-                      fillOpacity={0.6}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex justify-between text-[10px] text-zinc-600 mt-2 px-2 font-mono">
-            <span>09:00</span>
-            <span>10:30</span>
-            <span>12:00</span>
-            <span>13:30</span>
-          </div>
-        </div>
-
-        {/* Right: Summary Table */}
-        <div className="space-y-8">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs border-b border-zinc-800 pb-6">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">成交</span>
-              <span className={cn("font-bold font-mono", colorClass)}>{data.regularMarketPrice?.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">昨收</span>
-              <span className="font-bold font-mono text-zinc-300">{prevClose?.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">開盤</span>
-              <span className={cn("font-bold font-mono", data.regularMarketOpen >= prevClose ? 'text-red-400' : 'text-green-400')}>
-                {data.regularMarketOpen?.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">漲跌幅</span>
-              <span className={cn("font-bold font-mono", colorClass)}>{data.regularMarketChangePercent?.toFixed(2)}%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">最高</span>
-              <span className="text-red-400 font-bold font-mono">{data.regularMarketDayHigh?.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">漲跌</span>
-              <span className={cn("font-bold font-mono", colorClass)}>{data.regularMarketChange?.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">最低</span>
-              <span className="text-green-400 font-bold font-mono">{data.regularMarketDayLow?.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">總量</span>
-              <span className="font-bold font-mono text-zinc-300">{formatNumber(data.regularMarketVolume)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">均價</span>
-              <span className="font-bold font-mono text-zinc-300">{(intradayData.reduce((acc: number, curr: any) => acc + curr.close, 0) / (intradayData.length || 1)).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">昨量</span>
-              <span className="font-bold font-mono text-zinc-300">{formatNumber(data.averageDailyVolume3Month / 60)}</span>
-            </div>
-            <div className="flex justify-between col-span-2 pt-1 border-t border-zinc-800/50">
-              <span className="text-zinc-500">成交金額(億)</span>
-              <span className="font-bold font-mono text-zinc-300">{turnover}</span>
-            </div>
-            <div className="flex justify-between col-span-2">
-              <span className="text-zinc-500">振幅</span>
-              <span className="font-bold font-mono text-zinc-300">{amplitude}%</span>
-            </div>
-          </div>
-
-          {/* Inner/Outer Disc */}
-          <div className="space-y-3">
-            <div className="flex justify-between text-[10px] font-bold">
-              <span className="text-green-400">內盤 4,678(49.67%)</span>
-              <span className="text-red-400">4,741(50.33%) 外盤</span>
-            </div>
-            <div className="h-1.5 w-full flex rounded-full overflow-hidden bg-zinc-800">
-              <div className="bg-green-500 h-full" style={{ width: '49.67%' }}></div>
-              <div className="bg-red-500 h-full" style={{ width: '50.33%' }}></div>
-            </div>
-          </div>
-
-          {/* Bid/Ask Table */}
-          <div className="text-[10px] space-y-2 bg-zinc-950/30 p-4 rounded-xl border border-zinc-800/50">
-            <div className="grid grid-cols-4 text-zinc-600 pb-2 border-b border-zinc-800/50 font-bold uppercase tracking-wider">
-              <span>量</span>
-              <span>委買價</span>
-              <span className="text-right">委賣價</span>
-              <span className="text-right">量</span>
-            </div>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="grid grid-cols-4 items-center py-0.5">
-                <span className="text-blue-400/80 font-mono">{(Math.random() * 1000).toFixed(0)}</span>
-                <span className="font-mono text-zinc-400">{(data.regularMarketPrice - (i + 1) * 0.5).toFixed(2)}</span>
-                <span className="text-right font-mono text-zinc-400">{(data.regularMarketPrice + (i + 1) * 0.5).toFixed(2)}</span>
-                <span className="text-right text-blue-400/80 font-mono">{(Math.random() * 1000).toFixed(0)}</span>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+        {/* Left: Main Price Display & Chart (8 cols) */}
+        <div className="xl:col-span-8 space-y-6">
+          {/* Big Price Display */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center bg-zinc-950/40 p-6 rounded-2xl border border-zinc-800/50">
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-3">
+                <span className={cn(
+                  "text-6xl font-black tracking-tighter transition-all duration-300",
+                  pulse ? "scale-105" : "scale-100",
+                  colorClass
+                )}>
+                  {data.regularMarketPrice?.toFixed(2)}
+                </span>
+                <div className={cn("flex flex-col font-bold", colorClass)}>
+                  <div className="flex items-center">
+                    {isPositive ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+                    <span className="text-lg">{Math.abs(data.regularMarketChange || 0).toFixed(2)}</span>
+                  </div>
+                  <span className="text-sm">{data.regularMarketChangePercent?.toFixed(2)}%</span>
+                </div>
               </div>
-            ))}
+              <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">Current Market Price</p>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-4 border-l border-zinc-800/50 pl-6">
+              <div className="space-y-1">
+                <p className="text-zinc-600 text-[10px] font-bold uppercase">High</p>
+                <p className="text-red-400 font-mono font-bold">{data.regularMarketDayHigh?.toFixed(2)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-zinc-600 text-[10px] font-bold uppercase">Low</p>
+                <p className="text-green-400 font-mono font-bold">{data.regularMarketDayLow?.toFixed(2)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-zinc-600 text-[10px] font-bold uppercase">Open</p>
+                <p className="text-zinc-300 font-mono font-bold">{data.regularMarketOpen?.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Intraday Chart */}
+          <div className="h-[350px] flex flex-col bg-zinc-950/20 rounded-2xl p-4 border border-zinc-800/30">
+            <div className="flex-1 min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={intradayData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={isPositive ? "#ef4444" : "#22c55e"} stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor={isPositive ? "#ef4444" : "#22c55e"} stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#18181b" />
+                  <XAxis dataKey="date" hide={true} />
+                  <YAxis 
+                    domain={['auto', 'auto']} 
+                    orientation="right"
+                    tick={{ fontSize: 9, fill: '#3f3f46', fontFamily: 'monospace' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const d = payload[0].payload;
+                        if (d.isPlaceholder && !d.close) return null;
+                        
+                        return (
+                          <div className="bg-zinc-950 border border-zinc-800 p-3 shadow-2xl rounded-xl text-[10px] backdrop-blur-md">
+                            <p className="font-bold text-zinc-500 mb-2 border-b border-zinc-800 pb-1">{d.date}</p>
+                            <div className="space-y-1">
+                              <div className="flex justify-between gap-6">
+                                <span className="text-zinc-600">Price</span>
+                                <span className="font-mono text-white font-bold">{d.close ? d.close.toFixed(2) : '---'}</span>
+                              </div>
+                              <div className="flex justify-between gap-6">
+                                <span className="text-zinc-600">Volume</span>
+                                <span className="font-mono text-zinc-400">{d.volume ? formatNumber(d.volume) : '0'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <ReferenceLine y={prevClose} stroke="#3f3f46" strokeDasharray="3 3" />
+                  <Area 
+                    type="monotone" 
+                    dataKey="close" 
+                    stroke={isPositive ? "#ef4444" : "#22c55e"} 
+                    fillOpacity={1} 
+                    fill="url(#colorPrice)" 
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                    connectNulls={true}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="h-16 mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={intradayData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="date" hide={true} />
+                  <Bar dataKey="volume" isAnimationActive={false}>
+                    {intradayData.map((entry: any, index: number) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={index > 0 && entry.close && intradayData[index-1].close 
+                          ? (entry.close >= intradayData[index-1].close ? '#ef4444' : '#22c55e') 
+                          : '#ef4444'} 
+                        fillOpacity={0.4}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-between text-[9px] text-zinc-700 mt-2 px-2 font-mono font-bold uppercase tracking-widest">
+              <span>09:00</span>
+              <span>10:30</span>
+              <span>12:00</span>
+              <span>13:30</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Market Depth & Stats (4 cols) */}
+        <div className="xl:col-span-4 space-y-6">
+          {/* Bid/Ask Table */}
+          <div className="bg-zinc-950/40 rounded-2xl border border-zinc-800/50 overflow-hidden">
+            <div className="bg-zinc-900/50 px-4 py-2 border-b border-zinc-800 flex justify-between items-center">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Market Depth</span>
+              <div className="flex items-center gap-1 text-[9px] text-zinc-600">
+                <Info size={10} />
+                <span>Top Level Only</span>
+              </div>
+            </div>
+            <div className="p-4 space-y-1">
+              <div className="grid grid-cols-4 text-[9px] font-bold text-zinc-700 uppercase tracking-tighter pb-2">
+                <span>Size</span>
+                <span>Bid</span>
+                <span className="text-right">Ask</span>
+                <span className="text-right">Size</span>
+              </div>
+              
+              {/* Ask Levels */}
+              <div className="flex flex-col">
+                {askLevels.length > 0 ? askLevels.map((level, i) => (
+                  <div key={`ask-${i}`} className="grid grid-cols-4 items-center py-2 text-[13px] group hover:bg-zinc-800/30 transition-colors rounded">
+                    <span className="text-zinc-800 font-mono">---</span>
+                    <span className="text-zinc-800 font-mono">---</span>
+                    <span className="text-right font-mono text-red-400 font-bold">{level.price.toFixed(2)}</span>
+                    <span className="text-right font-mono text-zinc-300">{level.size}</span>
+                  </div>
+                )) : (
+                  <div className="py-2 text-center text-[10px] text-zinc-700 italic">No Ask Data Available</div>
+                )}
+              </div>
+
+              {/* Spread Divider */}
+              <div className="py-2 border-y border-zinc-800/50 my-2 flex justify-between items-center px-2">
+                <span className="text-[9px] font-bold text-zinc-700 uppercase">Spread</span>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  {askLevels.length > 0 && bidLevels.length > 0 ? (askLevels[0].price - bidLevels[0].price).toFixed(2) : '---'}
+                </span>
+              </div>
+
+              {/* Bid Levels */}
+              <div className="flex flex-col">
+                {bidLevels.length > 0 ? bidLevels.map((level, i) => (
+                  <div key={`bid-${i}`} className="grid grid-cols-4 items-center py-2 text-[13px] group hover:bg-zinc-800/30 transition-colors rounded">
+                    <span className="text-zinc-300 font-mono">{level.size}</span>
+                    <span className="font-mono text-green-400 font-bold">{level.price.toFixed(2)}</span>
+                    <span className="text-right text-zinc-800 font-mono">---</span>
+                    <span className="text-right text-zinc-800 font-mono">---</span>
+                  </div>
+                )) : (
+                  <div className="py-2 text-center text-[10px] text-zinc-700 italic">No Bid Data Available</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Key Stats Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/50">
+              <p className="text-zinc-600 text-[9px] font-bold uppercase mb-1">Volume</p>
+              <p className="text-zinc-200 font-mono font-bold text-sm">{formatNumber(data.regularMarketVolume)}</p>
+            </div>
+            <div className="bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/50">
+              <p className="text-zinc-600 text-[9px] font-bold uppercase mb-1">Turnover</p>
+              <p className="text-zinc-200 font-mono font-bold text-sm">{turnover}B</p>
+            </div>
+            <div className="bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/50">
+              <p className="text-zinc-600 text-[9px] font-bold uppercase mb-1">Amplitude</p>
+              <p className="text-zinc-200 font-mono font-bold text-sm">{amplitude}%</p>
+            </div>
+            <div className="bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/50">
+              <p className="text-zinc-600 text-[9px] font-bold uppercase mb-1">Avg Vol</p>
+              <p className="text-zinc-200 font-mono font-bold text-sm">{formatNumber(data.averageDailyVolume3Month)}</p>
+            </div>
+          </div>
+
+          <div className="bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/50">
+            <p className="text-zinc-600 text-[9px] font-bold uppercase mb-2">Market Cap</p>
+            <p className="text-zinc-200 font-mono font-bold text-sm">{formatNumber(data.marketCap)}</p>
           </div>
         </div>
       </div>
-      <div className="mt-8 text-[10px] text-zinc-600 italic flex items-center gap-2">
-        <div className="w-1 h-1 bg-zinc-700 rounded-full"></div>
-        註：成交金額不含盤後定價、零股、鉅額、拍賣及標購
+      
+      <div className="mt-8 pt-6 border-t border-zinc-800/50 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-4 text-[9px] text-zinc-600 font-bold uppercase tracking-widest">
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+            <span>Yahoo Finance Delayed Data</span>
+          </div>
+        </div>
+        <p className="text-[9px] text-zinc-700 italic max-w-md text-right">
+          註：台股數據由 Yahoo Finance 提供，約有 20 分鐘延遲。內外盤與五檔深度數據僅顯示 API 提供之最頂層資訊。
+        </p>
       </div>
     </div>
   );
 };
 
 export default RealtimeQuote;
+

@@ -414,6 +414,10 @@ async function createApp() {
         marketCap: quote.marketCap,
         trailingPE: quote.trailingPE,
         dividendYield: quote.dividendYield,
+        bid: quote.bid,
+        ask: quote.ask,
+        bidSize: quote.bidSize,
+        askSize: quote.askSize,
         historical: enrichedData,
       });
     } catch (error: any) {

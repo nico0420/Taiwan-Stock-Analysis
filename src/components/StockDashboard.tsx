@@ -27,6 +27,7 @@ export default function StockDashboard() {
   const [searchInput, setSearchInput] = useState("2330.TW");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [viewMode, setViewMode] = useState<"realtime" | "kline">("realtime");
   const [interval, setInterval] = useState("1d");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -54,7 +55,7 @@ export default function StockDashboard() {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (!isWheelZoomEnabled || !data || !data.historical || data.historical.length === 0) return;
+      if (viewMode !== "kline" || !isWheelZoomEnabled || !data || !data.historical || data.historical.length === 0) return;
       
       // Prevent default page scroll
       e.preventDefault();
@@ -90,14 +91,14 @@ export default function StockDashboard() {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (!data || !data.historical) return;
+      if (viewMode !== "kline" || !data || !data.historical) return;
       isPanning.current = true;
       startX.current = e.clientX;
       container.style.cursor = 'grabbing';
     };
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (!data || !data.historical) return;
+      if (viewMode !== "kline" || !data || !data.historical) return;
       if (e.touches.length === 1) {
         isPanning.current = true;
         startX.current = e.touches[0].clientX;
@@ -234,7 +235,7 @@ export default function StockDashboard() {
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleEnd);
     };
-  }, [data, isWheelZoomEnabled]);
+  }, [data, isWheelZoomEnabled, viewMode]);
 
   const applyZoomPreset = (bars: number) => {
     if (!data || !data.historical || data.historical.length === 0) return;
@@ -318,9 +319,9 @@ export default function StockDashboard() {
     bollinger: true,
   });
 
-  const fetchData = async (stockSymbol: string, queryInterval: string) => {
+  const fetchData = async (stockSymbol: string, queryInterval: string, skipCache = false) => {
     const cacheKey = `${stockSymbol}_${queryInterval}`;
-    if (cache.current.has(cacheKey)) {
+    if (!skipCache && cache.current.has(cacheKey)) {
       setData(cache.current.get(cacheKey));
       setHoveredIndex(null);
       setZoomRange(null);
@@ -328,7 +329,7 @@ export default function StockDashboard() {
       return;
     }
 
-    setLoading(true);
+    if (!skipCache) setLoading(true);
     setError("");
     try {
       const res = await fetch(`/api/stock/${stockSymbol}?interval=${queryInterval}`);
@@ -359,18 +360,36 @@ export default function StockDashboard() {
       }
       
       setData(result);
-      setHoveredIndex(null);
-      setZoomRange(null);
+      if (!skipCache) {
+        setHoveredIndex(null);
+        setZoomRange(null);
+      }
     } catch (err: any) {
-      setError(err.message);
+      if (!skipCache) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!skipCache) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData(symbol, interval);
-  }, [symbol, interval]);
+    const currentInterval = viewMode === "realtime" ? "1m" : interval;
+    fetchData(symbol, currentInterval, false);
+    
+    // Set up polling for real-time data if in realtime mode or interval is 1m
+    let pollTimer: any = null;
+    if (viewMode === "realtime" || interval === "1m") {
+      pollTimer = window.setInterval(() => {
+        // Only fetch if not already loading to avoid overlapping requests
+        if (!loading) {
+          fetchData(symbol, currentInterval, true);
+        }
+      }, 30000); // Poll every 30 seconds
+    }
+    
+    return () => {
+      if (pollTimer) window.clearInterval(pollTimer);
+    };
+  }, [symbol, interval, viewMode]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -506,6 +525,8 @@ export default function StockDashboard() {
           suggestions={suggestions}
           showSuggestions={showSuggestions}
           setShowSuggestions={setShowSuggestions}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
           interval={interval}
           setInterval={setInterval}
           watchlist={watchlist}
@@ -623,43 +644,49 @@ export default function StockDashboard() {
                     </div>
                     <div className="h-10 sm:h-12 w-px bg-zinc-800"></div>
                     <div className="grid grid-cols-2 gap-x-3 sm:gap-x-4 gap-y-1 text-[10px] sm:text-xs">
-                      <span className="text-zinc-500">成交量</span>
-                      <span className="text-zinc-100 font-mono">{formatNumber(displayData?.volume / 1000, 0)}張</span>
-                      <span className="text-zinc-500">日期</span>
-                      <span className="text-zinc-100 font-mono">{displayData?.date}</span>
+                      <div className="flex flex-col">
+                        <span className="text-zinc-500 uppercase tracking-wider">High</span>
+                        <span className="text-zinc-200 font-mono">{formatNumber(displayData?.high)}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-zinc-500 uppercase tracking-wider">Low</span>
+                        <span className="text-zinc-200 font-mono">{formatNumber(displayData?.low)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Charts Area */}
                 <div className="space-y-4 relative group" ref={chartContainerRef}>
-                  {/* Zoom Controls Overlay */}
-                  <div className="absolute top-4 right-4 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-lg p-1 flex flex-col gap-1 shadow-2xl">
-                      <button 
-                        onClick={() => setIsWheelZoomEnabled(!isWheelZoomEnabled)}
-                        className={cn(
-                          "p-2 rounded-md transition-all",
-                          isWheelZoomEnabled ? "bg-blue-500 text-white" : "text-zinc-400 hover:bg-zinc-800"
-                        )}
-                        title={isWheelZoomEnabled ? "關閉滾輪縮放" : "開啟滾輪縮放"}
-                      >
-                        <MousePointer2 size={18} />
-                      </button>
-                      <button 
-                        onClick={() => setZoomRange(null)}
-                        className="p-2 text-zinc-400 hover:bg-zinc-800 rounded-md transition-all"
-                        title="重設縮放"
-                      >
-                        <Maximize2 size={18} />
-                      </button>
+                  {viewMode === "realtime" ? (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                      <RealtimeQuote data={data} symbol={symbol} />
                     </div>
-                  </div>
-
-                  {interval === "1m" ? (
-                    <RealtimeQuote data={data} symbol={symbol} />
                   ) : (
-                    <div className="space-y-4 touch-none">
+                    <div className="space-y-4 touch-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+                      {/* Zoom Controls Overlay - Only in K-line mode */}
+                      <div className="absolute top-4 right-4 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-lg p-1 flex flex-col gap-1 shadow-2xl">
+                          <button 
+                            onClick={() => setIsWheelZoomEnabled(!isWheelZoomEnabled)}
+                            className={cn(
+                              "p-2 rounded-md transition-all",
+                              isWheelZoomEnabled ? "bg-blue-500 text-white" : "text-zinc-400 hover:bg-zinc-800"
+                            )}
+                            title={isWheelZoomEnabled ? "關閉滾輪縮放" : "開啟滾輪縮放"}
+                          >
+                            <MousePointer2 size={18} />
+                          </button>
+                          <button 
+                            onClick={() => setZoomRange(null)}
+                            className="p-2 text-zinc-400 hover:bg-zinc-800 rounded-md transition-all"
+                            title="重設縮放"
+                          >
+                            <Maximize2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+
                       <StockChart
                         data={{ ...data, historical: processedHistorical }}
                         activeMAs={activeMAs}
@@ -684,40 +711,40 @@ export default function StockDashboard() {
                         handleMouseMove={handleMouseMove}
                         handleMouseLeave={handleMouseLeave}
                       />
+
+                      {/* Range Selector Bar - Only in K-line mode */}
+                      <div className="flex items-center justify-between gap-4 px-2 pt-2">
+                        <div className="flex items-center gap-1 bg-zinc-900/50 p-1 rounded-lg border border-zinc-800">
+                          {[
+                            { label: '1M', bars: 20 },
+                            { label: '3M', bars: 60 },
+                            { label: '6M', bars: 120 },
+                            { label: '1Y', bars: 240 },
+                            { label: 'ALL', bars: 9999 }
+                          ].map((preset) => (
+                            <button
+                              key={preset.label}
+                              onClick={() => applyZoomPreset(preset.bars)}
+                              className="px-3 py-1 text-[10px] font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-all uppercase tracking-tighter"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                        
+                        <div className="hidden sm:flex items-center gap-4 text-[10px] text-zinc-500 font-mono">
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50" />
+                            <span>拖曳平移</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500/50" />
+                            <span>雙指縮放</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
-
-                  {/* Range Selector Bar */}
-                  <div className="flex items-center justify-between gap-4 px-2">
-                    <div className="flex items-center gap-1 bg-zinc-900/50 p-1 rounded-lg border border-zinc-800">
-                      {[
-                        { label: '1M', bars: 20 },
-                        { label: '3M', bars: 60 },
-                        { label: '6M', bars: 120 },
-                        { label: '1Y', bars: 240 },
-                        { label: 'ALL', bars: 9999 }
-                      ].map((preset) => (
-                        <button
-                          key={preset.label}
-                          onClick={() => applyZoomPreset(preset.bars)}
-                          className="px-3 py-1 text-[10px] font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-all uppercase tracking-tighter"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                    
-                    <div className="hidden sm:flex items-center gap-4 text-[10px] text-zinc-500 font-mono">
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50" />
-                        <span>拖曳平移</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-500/50" />
-                        <span>雙指縮放</span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

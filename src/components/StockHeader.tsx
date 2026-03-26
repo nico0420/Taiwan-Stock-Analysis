@@ -11,6 +11,8 @@ export const StockHeader = ({
   suggestions, 
   handleSelectSuggestion, 
   setShowSuggestions,
+  viewMode,
+  setViewMode,
   interval,
   setInterval,
   watchlist,
@@ -18,7 +20,7 @@ export const StockHeader = ({
   showWatchlist
 }: any) => (
   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-    <div className="flex items-center gap-6">
+    <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 w-full sm:w-auto">
       <div className="flex items-center gap-2">
         <img 
           src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/51.png" 
@@ -28,28 +30,59 @@ export const StockHeader = ({
         />
         <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">股市三地鼠</span>
       </div>
-      <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-        {[
-          { label: "即時", value: "1m" },
-          { label: "5分", value: "5m" },
-          { label: "60分", value: "60m" },
-          { label: "日線", value: "1d" },
-          { label: "週線", value: "1wk" },
-          { label: "月線", value: "1mo" },
-        ].map((opt) => (
+
+      <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+        {/* Main View Mode Toggle */}
+        <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 w-full sm:w-auto">
           <button
-            key={opt.value}
-            onClick={() => setInterval(opt.value)}
+            onClick={() => setViewMode("realtime")}
             className={cn(
-              "px-3 py-1 text-sm rounded-md transition-all",
-              interval === opt.value
-                ? "bg-blue-600 text-white font-medium shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+              "flex-1 sm:flex-none px-4 py-1.5 text-sm rounded-md transition-all font-medium",
+              viewMode === "realtime"
+                ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]"
                 : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
             )}
           >
-            {opt.label}
+            即時
           </button>
-        ))}
+          <button
+            onClick={() => setViewMode("kline")}
+            className={cn(
+              "flex-1 sm:flex-none px-4 py-1.5 text-sm rounded-md transition-all font-medium",
+              viewMode === "kline"
+                ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+                : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+            )}
+          >
+            K線
+          </button>
+        </div>
+
+        {/* K-line Intervals - Only visible when in kline mode */}
+        {viewMode === "kline" && (
+          <div className="flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800/50 w-full sm:w-auto overflow-x-auto">
+            {[
+              { label: "5分", value: "5m" },
+              { label: "60分", value: "60m" },
+              { label: "日線", value: "1d" },
+              { label: "週線", value: "1wk" },
+              { label: "月線", value: "1mo" },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setInterval(opt.value)}
+                className={cn(
+                  "px-3 py-1 text-xs rounded-md transition-all whitespace-nowrap",
+                  interval === opt.value
+                    ? "bg-zinc-700 text-white font-medium"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
 
