@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   ComposedChart,
   Line,
@@ -60,29 +60,32 @@ export default function StockDashboard() {
 
       const totalLen = data.historical.length;
       
-      setZoomRange(prev => {
-        let currentStart = prev ? prev.start : 0;
-        let currentEnd = prev ? prev.end : totalLen - 1;
-        const currentRange = currentEnd - currentStart;
-        
-        // Zoom factor: 10% of current range
-        const zoomFactor = Math.max(1, Math.floor(currentRange * 0.1));
-        
-        if (e.deltaY > 0) {
-          // Zoom out
-          currentStart = Math.max(0, currentStart - zoomFactor);
-          currentEnd = Math.min(totalLen - 1, currentEnd + zoomFactor);
-        } else {
-          // Zoom in
-          if (currentRange > 10) {
-            currentStart = Math.min(currentEnd - 10, currentStart + zoomFactor);
-            currentEnd = Math.max(currentStart + 10, currentEnd - zoomFactor);
-          }
+      const currentZoom = zoomRangeRef.current;
+      let currentStart = currentZoom ? currentZoom.start : 0;
+      let currentEnd = currentZoom ? currentZoom.end : totalLen - 1;
+      const currentRange = currentEnd - currentStart;
+      
+      // Zoom factor: 10% of current range
+      const zoomFactor = Math.max(1, Math.floor(currentRange * 0.1));
+      
+      if (e.deltaY > 0) {
+        // Zoom out
+        currentStart = Math.max(0, currentStart - zoomFactor);
+        currentEnd = Math.min(totalLen - 1, currentEnd + zoomFactor);
+      } else {
+        // Zoom in
+        if (currentRange > 10) {
+          currentStart = Math.min(currentEnd - 10, currentStart + zoomFactor);
+          currentEnd = Math.max(currentStart + 10, currentEnd - zoomFactor);
         }
-        
-        if (currentStart <= 0 && currentEnd >= totalLen - 1) return null;
-        return { start: Math.floor(currentStart), end: Math.floor(currentEnd) };
-      });
+      }
+      
+      const nextRange = (currentStart <= 0 && currentEnd >= totalLen - 1) 
+        ? null 
+        : { start: Math.floor(currentStart), end: Math.floor(currentEnd) };
+      
+      setZoomRange(nextRange);
+      zoomRangeRef.current = nextRange;
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -160,20 +163,22 @@ export default function StockDashboard() {
         const sensitivity = currentRange / containerWidth;
         const shift = Math.round(-deltaX * sensitivity);
         
-        if (shift !== 0) {
-          startX.current = e.touches[0].clientX;
-          setZoomRange(prev => {
-            const current = prev || { start: 0, end: totalLen - 1 };
-            let newStart = current.start + shift;
-            let newEnd = current.end + shift;
-            const rangeSize = current.end - current.start;
-            if (newStart < 0) { newStart = 0; newEnd = rangeSize; }
-            else if (newEnd >= totalLen) { newEnd = totalLen - 1; newStart = newEnd - rangeSize; }
-            
-            if (isNaN(newStart) || isNaN(newEnd)) return prev;
-            return { start: Math.floor(newStart), end: Math.floor(newEnd) };
-          });
+      if (shift !== 0) {
+        startX.current = e.touches[0].clientX;
+        const currentZoom = zoomRangeRef.current;
+        const current = currentZoom || { start: 0, end: totalLen - 1 };
+        let newStart = current.start + shift;
+        let newEnd = current.end + shift;
+        const rangeSize = current.end - current.start;
+        if (newStart < 0) { newStart = 0; newEnd = rangeSize; }
+        else if (newEnd >= totalLen) { newEnd = totalLen - 1; newStart = newEnd - rangeSize; }
+        
+        if (!isNaN(newStart) && !isNaN(newEnd)) {
+          const nextRange = { start: Math.floor(newStart), end: Math.floor(newEnd) };
+          setZoomRange(nextRange);
+          zoomRangeRef.current = nextRange;
         }
+      }
       } else if (e.touches.length === 2) {
         const dist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
@@ -182,23 +187,25 @@ export default function StockDashboard() {
         const deltaDist = dist - startDist.current;
         if (Math.abs(deltaDist) > 5) {
           const totalLen = data.historical.length;
-          setZoomRange(prev => {
-            const current = prev || { start: 0, end: totalLen - 1 };
-            const range = current.end - current.start;
-            const zoomAmount = Math.max(1, Math.floor(range * 0.05));
-            let newStart = current.start;
-            let newEnd = current.end;
-            
-            if (deltaDist > 0) {
-              newStart = Math.min(newEnd - 10, newStart + zoomAmount);
-              newEnd = Math.max(newStart + 10, newEnd - zoomAmount);
-            } else {
-              newStart = Math.max(0, newStart - zoomAmount);
-              newEnd = Math.min(totalLen - 1, newEnd + zoomAmount);
-            }
-            if (isNaN(newStart) || isNaN(newEnd)) return prev;
-            return { start: Math.floor(newStart), end: Math.floor(newEnd) };
-          });
+          const currentZoom = zoomRangeRef.current;
+          const current = currentZoom || { start: 0, end: totalLen - 1 };
+          const range = current.end - current.start;
+          const zoomAmount = Math.max(1, Math.floor(range * 0.05));
+          let newStart = current.start;
+          let newEnd = current.end;
+          
+          if (deltaDist > 0) {
+            newStart = Math.min(newEnd - 10, newStart + zoomAmount);
+            newEnd = Math.max(newStart + 10, newEnd - zoomAmount);
+          } else {
+            newStart = Math.max(0, newStart - zoomAmount);
+            newEnd = Math.min(totalLen - 1, newEnd + zoomAmount);
+          }
+          if (!isNaN(newStart) && !isNaN(newEnd)) {
+            const nextRange = { start: Math.floor(newStart), end: Math.floor(newEnd) };
+            setZoomRange(nextRange);
+            zoomRangeRef.current = nextRange;
+          }
           startDist.current = dist;
         }
       }
@@ -231,12 +238,13 @@ export default function StockDashboard() {
   const applyZoomPreset = (bars: number) => {
     if (!data || !data.historical || data.historical.length === 0) return;
     const total = data.historical.length;
-    if (bars >= total) {
-      setZoomRange(null);
-    } else {
+    let nextRange = null;
+    if (bars < total) {
       const actualBars = Math.max(10, bars);
-      setZoomRange({ start: Math.max(0, total - actualBars), end: total - 1 });
+      nextRange = { start: Math.max(0, total - actualBars), end: total - 1 };
     }
+    setZoomRange(nextRange);
+    zoomRangeRef.current = nextRange;
   };
 
   // Load watchlist from localStorage
@@ -392,26 +400,32 @@ export default function StockDashboard() {
     setSuggestions([]);
   };
 
-  const handleMouseMove = (e: any) => {
-    if (e && e.activePayload && e.activePayload.length > 0) {
+  const handleMouseMove = useCallback((e: any) => {
+    if (!data?.historical || data.historical.length === 0) return;
+    
+    // Recharts provides activeTooltipIndex which is the index in the data array passed to the chart.
+    // Since we pass the sliced data (processedHistorical), this index is relative.
+    if (e && typeof e.activeTooltipIndex === 'number') {
+      const relativeIndex = e.activeTooltipIndex;
+      const currentZoom = zoomRangeRef.current;
+      const absoluteIndex = currentZoom ? currentZoom.start + relativeIndex : relativeIndex;
+      
+      // Safety check for bounds
+      const safeIndex = Math.max(0, Math.min(absoluteIndex, data.historical.length - 1));
+      setHoveredIndex(safeIndex);
+    } else if (e && e.activePayload && e.activePayload.length > 0) {
+      // Fallback to payload matching if index is missing
       const hoveredData = e.activePayload[0].payload;
-      // Find the absolute index in the original historical data by matching the date
-      const absoluteIndex = data?.historical?.findIndex((d: any) => d.date === hoveredData.date);
-      if (absoluteIndex !== undefined && absoluteIndex !== -1) {
+      const absoluteIndex = data.historical.findIndex((d: any) => d.date === hoveredData.date);
+      if (absoluteIndex !== -1) {
         setHoveredIndex(absoluteIndex);
       }
-    } else if (e && e.activeTooltipIndex != null) {
-      // If we are zoomed, activeTooltipIndex is relative to the sliced array.
-      // We need to map it back to the absolute index.
-      const relativeIndex = e.activeTooltipIndex;
-      const absoluteIndex = zoomRange ? zoomRange.start + relativeIndex : relativeIndex;
-      setHoveredIndex(absoluteIndex);
     }
-  };
+  }, [data?.historical]);
 
-  const handleMouseLeave = () => {
+  const handleMouseLeave = useCallback(() => {
     setHoveredIndex(null);
-  };
+  }, []);
 
   // Safely slice historical data based on zoomRange
   const processedHistorical = useMemo(() => {
@@ -436,20 +450,24 @@ export default function StockDashboard() {
     if (hoveredIndex !== null) {
       return Math.max(0, Math.min(hoveredIndex, data.historical.length - 1));
     }
+    // Default to last visible index if zoomed
+    if (zoomRange) {
+      return Math.min(zoomRange.end, data.historical.length - 1);
+    }
     return data.historical.length - 1;
-  }, [data?.historical, hoveredIndex]);
+  }, [data?.historical, hoveredIndex, zoomRange]);
 
   const displayData = data?.historical ? data.historical[displayIndex] : null;
   const prevData = data?.historical && displayIndex > 0 ? data.historical[displayIndex - 1] : null;
 
   // Calculate display values based on hover
   const isHovering = hoveredIndex !== null;
-  const priceToDisplay = isHovering ? displayData?.close : data?.regularMarketPrice;
-  const changeToDisplay = isHovering 
-    ? (prevData ? displayData?.close - prevData.close : 0) 
+  const priceToDisplay = isHovering ? displayData?.close : (zoomRange ? displayData?.close : data?.regularMarketPrice);
+  const changeToDisplay = isHovering || zoomRange
+    ? (prevData ? (displayData?.close || 0) - (prevData.close || 0) : 0) 
     : data?.regularMarketChange;
-  const percentToDisplay = isHovering 
-    ? (prevData ? ((displayData?.close - prevData.close) / prevData.close * 100) : 0) 
+  const percentToDisplay = isHovering || zoomRange
+    ? (prevData ? (((displayData?.close || 0) - (prevData.close || 0)) / (prevData.close || 1) * 100) : 0) 
     : data?.regularMarketChangePercent;
   const trendColor = getPriceTrend(changeToDisplay, 0).color;
 

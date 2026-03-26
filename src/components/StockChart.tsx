@@ -153,6 +153,7 @@ export const StockChart = ({
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={true} />
               <XAxis 
                 dataKey="date" 
+                scale="band"
                 stroke="#52525b" 
                 fontSize={10} 
                 tickMargin={8} 
