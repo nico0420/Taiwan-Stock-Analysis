@@ -114,7 +114,7 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
       month: '2-digit',
       day: '2-digit',
     };
-    if (interval === "60m") {
+    if (interval === "60m" || interval === "1m" || interval === "5m") {
       options.hour = '2-digit';
       options.minute = '2-digit';
       options.hour12 = false;
@@ -133,7 +133,7 @@ function calculateIndicators(quotes: any[], interval: string, timezone: string =
     }
     
     let dateStr = `${year}-${month}-${day}`;
-    if (interval === "60m") {
+    if (interval === "60m" || interval === "1m" || interval === "5m") {
       dateStr = `${dateStr} ${hour}:${minute}`;
     }
 
@@ -347,11 +347,15 @@ async function createApp() {
         }
       }
 
-      const validIntervals = ["60m", "1d", "1wk", "1mo"];
+      const validIntervals = ["1m", "5m", "60m", "1d", "1wk", "1mo"];
       const queryInterval = validIntervals.includes(interval) ? interval as any : "1d";
       
       const period1 = new Date();
-      if (queryInterval === "60m") {
+      if (queryInterval === "1m") {
+        period1.setDate(period1.getDate() - 7); // Yahoo only allows 7 days for 1m
+      } else if (queryInterval === "5m") {
+        period1.setDate(period1.getDate() - 30);
+      } else if (queryInterval === "60m") {
         period1.setMonth(period1.getMonth() - 3);
       } else if (queryInterval === "1d") {
         period1.setMonth(period1.getMonth() - 6);
@@ -401,6 +405,15 @@ async function createApp() {
         regularMarketPrice: quote.regularMarketPrice,
         regularMarketChange: quote.regularMarketChange,
         regularMarketChangePercent: quote.regularMarketChangePercent,
+        regularMarketOpen: quote.regularMarketOpen,
+        regularMarketDayHigh: quote.regularMarketDayHigh,
+        regularMarketDayLow: quote.regularMarketDayLow,
+        regularMarketPreviousClose: quote.regularMarketPreviousClose,
+        regularMarketVolume: quote.regularMarketVolume,
+        averageDailyVolume3Month: quote.averageDailyVolume3Month,
+        marketCap: quote.marketCap,
+        trailingPE: quote.trailingPE,
+        dividendYield: quote.dividendYield,
         historical: enrichedData,
       });
     } catch (error: any) {

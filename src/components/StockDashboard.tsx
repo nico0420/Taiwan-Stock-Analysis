@@ -19,6 +19,7 @@ import { StockHeader } from "./StockHeader";
 import { StockChart } from "./StockChart";
 import { IndicatorChart } from "./IndicatorChart";
 import { Watchlist } from "./Watchlist";
+import RealtimeQuote from "./RealtimeQuote";
 import { formatNumber, getIndicatorTrend, getPriceTrend, Candlestick, CustomTooltip, IndicatorTooltip } from "./StockTooltips";
 
 export default function StockDashboard() {
@@ -655,32 +656,36 @@ export default function StockDashboard() {
                     </div>
                   </div>
 
-                  <div className="space-y-4 touch-none">
-                    <StockChart
-                      data={{ ...data, historical: processedHistorical }}
-                      activeMAs={activeMAs}
-                      setActiveMAs={setActiveMAs}
-                      maColors={maColors}
-                      displayData={displayData}
-                      prevData={prevData}
-                      handleMouseMove={handleMouseMove}
-                      handleMouseLeave={handleMouseLeave}
-                    />
-                    <IndicatorChart
-                      type="volume"
-                      data={{ ...data, historical: processedHistorical }}
-                      displayData={displayData}
-                      handleMouseMove={handleMouseMove}
-                      handleMouseLeave={handleMouseLeave}
-                    />
-                    <IndicatorChart
-                      type="kdj"
-                      data={{ ...data, historical: processedHistorical }}
-                      displayData={displayData}
-                      handleMouseMove={handleMouseMove}
-                      handleMouseLeave={handleMouseLeave}
-                    />
-                  </div>
+                  {interval === "1m" ? (
+                    <RealtimeQuote data={data} symbol={symbol} />
+                  ) : (
+                    <div className="space-y-4 touch-none">
+                      <StockChart
+                        data={{ ...data, historical: processedHistorical }}
+                        activeMAs={activeMAs}
+                        setActiveMAs={setActiveMAs}
+                        maColors={maColors}
+                        displayData={displayData}
+                        prevData={prevData}
+                        handleMouseMove={handleMouseMove}
+                        handleMouseLeave={handleMouseLeave}
+                      />
+                      <IndicatorChart
+                        type="volume"
+                        data={{ ...data, historical: processedHistorical }}
+                        displayData={displayData}
+                        handleMouseMove={handleMouseMove}
+                        handleMouseLeave={handleMouseLeave}
+                      />
+                      <IndicatorChart
+                        type="kdj"
+                        data={{ ...data, historical: processedHistorical }}
+                        displayData={displayData}
+                        handleMouseMove={handleMouseMove}
+                        handleMouseLeave={handleMouseLeave}
+                      />
+                    </div>
+                  )}
 
                   {/* Range Selector Bar */}
                   <div className="flex items-center justify-between gap-4 px-2">

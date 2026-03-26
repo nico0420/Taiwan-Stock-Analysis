@@ -30,6 +30,8 @@ export const StockHeader = ({
       </div>
       <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
         {[
+          { label: "即時", value: "1m" },
+          { label: "5分", value: "5m" },
           { label: "60分", value: "60m" },
           { label: "日線", value: "1d" },
           { label: "週線", value: "1wk" },
